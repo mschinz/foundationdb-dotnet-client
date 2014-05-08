@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -180,7 +180,7 @@ namespace FoundationDB.Tests.Sandbox
 					Console.WriteLine("> Connected!");
 
 					Console.WriteLine("Opening database 'DB'...");
-					using (var db = await cluster.OpenDatabaseAsync(DB_NAME, new FdbSubspace(FdbTuple.Create(SUBSPACE)), ct))
+					using (var db = await cluster.OpenDatabaseAsync(DB_NAME, new FdbSubspace(FdbTuple.Create(SUBSPACE)), false, ct))
 					{
 						Console.WriteLine("> Connected to db '{0}'", db.Name);
 
@@ -274,7 +274,7 @@ namespace FoundationDB.Tests.Sandbox
 
 		}
 
-		private static async Task TestSimpleTransactionAsync(FdbDatabase db, CancellationToken ct)
+		private static async Task TestSimpleTransactionAsync(IFdbDatabase db, CancellationToken ct)
 		{
 			Console.WriteLine("Starting new transaction...");
 
@@ -314,7 +314,7 @@ namespace FoundationDB.Tests.Sandbox
 			}
 		}
 
-		private static async Task BenchInsertSmallKeysAsync(FdbDatabase db, int N, int size, CancellationToken ct)
+		private static async Task BenchInsertSmallKeysAsync(IFdbDatabase db, int N, int size, CancellationToken ct)
 		{
 			// insert a lot of small key size, in a single transaction
 			var rnd = new Random();
@@ -346,7 +346,7 @@ namespace FoundationDB.Tests.Sandbox
 			Console.WriteLine("[" + Thread.CurrentThread.ManagedThreadId + "] Took " + min.TotalSeconds.ToString("N3", CultureInfo.InvariantCulture) + " sec to insert " + N + " " + size + "-bytes items (" + FormatTimeMicro(min.TotalMilliseconds / N) + "/write)");
 		}
 
-		private static async Task BenchConcurrentInsert(FdbDatabase db, int k, int N, int size, CancellationToken ct)
+		private static async Task BenchConcurrentInsert(IFdbDatabase db, int k, int N, int size, CancellationToken ct)
 		{
 			// insert a lot of small key size, in multiple batch running in //
 			// k = number of threads
@@ -425,7 +425,7 @@ namespace FoundationDB.Tests.Sandbox
 			Console.WriteLine();
 		}
 
-		private static async Task BenchSerialWriteAsync(FdbDatabase db, int N, CancellationToken ct)
+		private static async Task BenchSerialWriteAsync(IFdbDatabase db, int N, CancellationToken ct)
 		{
 			// read a lot of small keys, one by one
 
@@ -457,7 +457,7 @@ namespace FoundationDB.Tests.Sandbox
 		}
 
 
-		private static async Task BenchSerialReadAsync(FdbDatabase db, int N, CancellationToken ct)
+		private static async Task BenchSerialReadAsync(IFdbDatabase db, int N, CancellationToken ct)
 		{
 
 			Console.WriteLine("Reading " + N + " keys (serial, slow!)");
@@ -483,7 +483,7 @@ namespace FoundationDB.Tests.Sandbox
 			Console.WriteLine("Took " + sw.Elapsed + " to read " + N + " items (" + FormatTimeMicro(sw.Elapsed.TotalMilliseconds / N) + "/read)");
 		}
 
-		private static async Task BenchConcurrentReadAsync(FdbDatabase db, int N, CancellationToken ct)
+		private static async Task BenchConcurrentReadAsync(IFdbDatabase db, int N, CancellationToken ct)
 		{
 			// read a lot of small keys, concurrently
 
@@ -513,7 +513,7 @@ namespace FoundationDB.Tests.Sandbox
 			Console.WriteLine("Took " + sw.Elapsed + " to read " + keys.Length + " items (" + FormatTimeMicro(sw.Elapsed.TotalMilliseconds / keys.Length) + "/read)");
 		}
 
-		private static async Task BenchClearAsync(FdbDatabase db, int N, CancellationToken ct)
+		private static async Task BenchClearAsync(IFdbDatabase db, int N, CancellationToken ct)
 		{
 			// clear a lot of small keys, in a single transaction
 
@@ -533,7 +533,7 @@ namespace FoundationDB.Tests.Sandbox
 			Console.WriteLine("Took " + sw.Elapsed + " to clear " + N + " items (" + FormatTimeMicro(sw.Elapsed.TotalMilliseconds / N) + "/write)");
 		}
 
-		private static async Task BenchUpdateSameKeyLotsOfTimesAsync(FdbDatabase db, int N, CancellationToken ct)
+		private static async Task BenchUpdateSameKeyLotsOfTimesAsync(IFdbDatabase db, int N, CancellationToken ct)
 		{
 			// continuously update same key by adding a little bit more
 
@@ -557,7 +557,7 @@ namespace FoundationDB.Tests.Sandbox
 			Console.WriteLine("\rTook " + update.Elapsed + " to fill a byte[" + N + "] one by one (" + FormatTimeMicro(update.Elapsed.TotalMilliseconds / N) + "/update)");
 		}
 
-		private static async Task BenchUpdateLotsOfKeysAsync(FdbDatabase db, int N, CancellationToken ct)
+		private static async Task BenchUpdateLotsOfKeysAsync(IFdbDatabase db, int N, CancellationToken ct)
 		{
 			// change one byte in a large number of keys
 
@@ -609,7 +609,7 @@ namespace FoundationDB.Tests.Sandbox
 
 		}
 
-		private static async Task BenchBulkInsertThenBulkReadAsync(FdbDatabase db, int N, int K, int B, CancellationToken ct, bool instrumented = false)
+		private static async Task BenchBulkInsertThenBulkReadAsync(IFdbDatabase db, int N, int K, int B, CancellationToken ct, bool instrumented = false)
 		{
 			// test that we can bulk write / bulk read
 
@@ -699,7 +699,7 @@ namespace FoundationDB.Tests.Sandbox
 			}
 		}
 
-		private static async Task BenchMergeSortAsync(FdbDatabase db, int N, int K, int B, CancellationToken ct)
+		private static async Task BenchMergeSortAsync(IFdbDatabase db, int N, int K, int B, CancellationToken ct)
 		{
 			// create multiple lists
 			var location = db.Partition("MergeSort");

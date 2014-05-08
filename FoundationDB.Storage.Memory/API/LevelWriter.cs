@@ -11,11 +11,12 @@ namespace FoundationDB.Storage.Memory.API
 	using System.Collections.Generic;
 	using System.Diagnostics.Contracts;
 
+	/// <summary>Helper class to add key/value pairs to a level</summary>
+	/// <remarks>This class is not thread-safe</remarks>
 	internal sealed class LevelWriter : IDisposable
 	{
 
-		/// <summary>Scratch use to format keys when committing (single writer)</summary>
-		private UnmanagedSliceBuilder m_scratch = new UnmanagedSliceBuilder(128 * 1024);
+		private UnmanagedSliceBuilder m_scratch = new UnmanagedSliceBuilder(128 * 1024); // > 80KB will go to the LOH
 		private List<IntPtr> m_list;
 		private KeyHeap m_keys;
 		private ValueHeap m_values;
@@ -40,6 +41,24 @@ namespace FoundationDB.Storage.Memory.API
 			// allocate the value
 			Slice userValue = current.Value;
 			uint size = checked((uint)userValue.Count);
+			Value* value = m_values.Allocate(size, sequence, null, key);
+			Contract.Assert(value != null, "value == null");
+			UnmanagedHelpers.CopyUnsafe(&(value->Data), userValue);
+
+			key->Values = value;
+
+			m_list.Add(new IntPtr(key));
+		}
+
+		public unsafe void Add(ulong sequence, USlice userKey, USlice userValue)
+		{
+			// allocate the key
+			var tmp = MemoryDatabaseHandler.PackUserKey(m_scratch, userKey);
+			Key* key = m_keys.Append(tmp);
+			Contract.Assert(key != null, "key == null");
+
+			// allocate the value
+			uint size = userValue.Count;
 			Value* value = m_values.Allocate(size, sequence, null, key);
 			Contract.Assert(value != null, "value == null");
 			UnmanagedHelpers.CopyUnsafe(&(value->Data), userValue);

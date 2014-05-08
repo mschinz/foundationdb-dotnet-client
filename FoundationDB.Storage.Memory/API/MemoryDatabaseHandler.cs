@@ -2,6 +2,8 @@
 // See License.MD for license information
 #endregion
 
+#undef FULLDEBUG
+
 namespace FoundationDB.Storage.Memory.API
 {
 	using FoundationDB.Client;
@@ -97,16 +99,15 @@ namespace FoundationDB.Storage.Memory.API
 			}
 		}
 
-		/// <summary>Format a user key</summary>
-		/// <param name="buffer"></param>
-		/// <param name="userKey"></param>
-		/// <returns></returns>
+		/// <summary>Format a user key using a slice buffer for temporary storage</summary>
+		/// <remarks>The buffer is cleared prior to usage!</remarks>
 		internal unsafe static USlice PackUserKey(UnmanagedSliceBuilder buffer, Slice userKey)
 		{
 			if (buffer == null) throw new ArgumentNullException("buffer");
 			if (userKey.IsNull ) throw new ArgumentException("Key cannot be nil");
 			if (userKey.Count < 0 || userKey.Offset < 0 || userKey.Array == null) throw new ArgumentException("Malformed key");
 
+			buffer.Clear();
 			uint keySize = (uint)userKey.Count;
 			var size = Key.SizeOf + keySize;
 			var tmp = buffer.Allocate(size);
@@ -115,7 +116,26 @@ namespace FoundationDB.Storage.Memory.API
 			key->Header = ((uint)EntryType.Key) << Entry.TYPE_SHIFT;
 			key->Values = null;
 
-			if (userKey.Count > 0) UnmanagedHelpers.CopyUnsafe(&(key->Data), userKey);
+			if (keySize > 0) UnmanagedHelpers.CopyUnsafe(&(key->Data), userKey);
+			return tmp;
+		}
+
+		/// <summary>Format a user key</summary>
+		internal unsafe static USlice PackUserKey(UnmanagedSliceBuilder buffer, USlice userKey)
+		{
+			if (buffer == null) throw new ArgumentNullException("buffer");
+			if (userKey.Count > 0  && userKey.Data == null) throw new ArgumentException("Malformed key");
+
+			buffer.Clear();
+			uint keySize = userKey.Count;
+			var size = Key.SizeOf + keySize;
+			var tmp = buffer.Allocate(size);
+			var key = (Key*)tmp.Data;
+			key->Size = keySize;
+			key->Header = ((uint)EntryType.Key) << Entry.TYPE_SHIFT;
+			key->Values = null;
+
+			if (keySize > 0) UnmanagedHelpers.CopyUnsafe(&(key->Data), userKey);
 			return tmp;
 		}
 
@@ -172,6 +192,15 @@ namespace FoundationDB.Storage.Memory.API
 			}
 		}
 
+		/// <summary>Commits the changes made by a transaction to the database.</summary>
+		/// <param name="trans"></param>
+		/// <param name="readVersion"></param>
+		/// <param name="readConflicts"></param>
+		/// <param name="writeConflicts"></param>
+		/// <param name="clearRanges"></param>
+		/// <param name="writes"></param>
+		/// <returns></returns>
+		/// <remarks>This method is not thread safe and must be called from the writer thread.</remarks>
 		internal unsafe long CommitTransaction(MemoryTransactionHandler trans, long readVersion, ColaRangeSet<Slice> readConflicts, ColaRangeSet<Slice> writeConflicts, ColaRangeSet<Slice> clearRanges, ColaOrderedDictionary<Slice, MemoryTransactionHandler.WriteCommand[]> writes)
 		{
 			if (trans == null) throw new ArgumentNullException("trans");
@@ -264,7 +293,6 @@ namespace FoundationDB.Storage.Memory.API
 							// For both case, we will do a lookup in the db to get the previous value and location
 
 							// create the lookup key
-							m_scratchKey.Clear();
 							USlice lookupKey = PackUserKey(m_scratchKey, write.Key);
 
 							IntPtr previous;
@@ -502,23 +530,6 @@ namespace FoundationDB.Storage.Memory.API
 								throw new InvalidOperationException("Iterator stopped before reaching the expected number of items");
 							}
 							writer.Add(sequence, iter.Current);
-#if REFACTORED
-							// allocate the key
-							var tmp = PackUserKey(m_scratchKey, iter.Current.Key);
-							Key* key = m_keys.Append(tmp);
-							Contract.Assert(key != null, "key == null");
-
-							// allocate the value
-							Slice userValue = iter.Current.Value;
-							uint size = checked((uint)userValue.Count);
-							Value* value = m_values.Allocate(size, sequence, null, key);
-							Contract.Assert(value != null, "value == null");
-							UnmanagedHelpers.CopyUnsafe(&(value->Data), userValue);
-
-							key->Values = value;
-
-							list.Add(new IntPtr(key));
-#endif
 						}
 
 						// and insert it (should fit nicely in a level without cascading)
@@ -626,44 +637,6 @@ namespace FoundationDB.Storage.Memory.API
 
 		}
 
-#if REFACTORED
-		internal unsafe Task<Slice> GetValueAtVersionAsync(Slice userKey, long readVersion)
-		{
-			if (m_disposed) ThrowDisposed();
-			if (userKey.Count <= 0) throw new ArgumentException("Key cannot be empty");
-
-			m_dataLock.EnterReadLock();
-			try
-			{
-				ulong sequence = (ulong)readVersion;
-				EnsureReadVersionNotInTheFuture_NeedsLocking(sequence);
-
-				// create a lookup key
-				using (var scratch = m_scratchPool.Use())
-				{
-					var lookupKey = PackUserKey(scratch.Builder, userKey);
-
-					USlice value;
-					if (!TryGetValueAtVersion(lookupKey, sequence, out value))
-					{ // la clé n'existe pas (ou plus à cette version)
-						return NilResult;
-					}
-
-					if (value.Count == 0)
-					{ // la clé existe, mais est vide
-						return EmptyResult;
-					}
-
-					return Task.FromResult(value.ToSlice());
-				}
-			}
-			finally
-			{
-				m_dataLock.ExitReadLock();
-			}
-		}
-#endif
-
 		/// <summary>Read the value of one or more keys, at a specific database version</summary>
 		/// <param name="userKeys">List of keys to read (MUST be ordered)</param>
 		/// <param name="readVersion">Version of the read</param>
@@ -693,7 +666,6 @@ namespace FoundationDB.Storage.Memory.API
 						for (int i = 0; i < userKeys.Length; i++)
 						{
 							// create a lookup key
-							builder.Clear();
 							var lookupKey = PackUserKey(builder, userKeys[i]);
 
 							USlice value;
@@ -818,59 +790,6 @@ namespace FoundationDB.Storage.Memory.API
 			return iterator;
 		}
 
-#if REFACTORED
-		internal unsafe Task<Slice> GetKeyAtVersion(FdbKeySelector selector, long readVersion)
-		{
-			if (m_disposed) ThrowDisposed();
-			if (selector.Key.IsNullOrEmpty) throw new ArgumentException("selector");
-
-			m_dataLock.EnterReadLock();
-			try
-			{
-				ulong sequence = (ulong)readVersion;
-				EnsureReadVersionNotInTheFuture_NeedsLocking(sequence);
-
-				// TODO: convert all selectors to a FirstGreaterThan ?
-
-				using (var scratch = m_scratchPool.Use())
-				{
-					var lookupKey = PackUserKey(scratch.Builder, selector.Key);
-
-					var iterator = ResolveCursor(lookupKey, selector.OrEqual, selector.Offset, sequence);
-					Contract.Assert(iterator != null);
-
-					if (iterator.Current == IntPtr.Zero)
-					{
-						if (iterator.Direction <= 0)
-						{
-							// specs: "If a key selector would otherwise describe a key off the beginning of the database, it instead resolves to the empty key ''."
-							return EmptyResult;
-						}
-						else
-						{
-							//TODO: access to system keys !
-							return MaxResult;
-						}
-					}
-
-					//Trace.WriteLine("> Found it !");
-
-					// we want the key!
-					Key* key = (Key*)iterator.Current.ToPointer();
-					Contract.Assert(key != null && key->Size > 0);
-
-					var tmp = Key.GetData(key);
-					return Task.FromResult(tmp.ToSlice());
-				}
-			}
-			finally
-			{
-				m_dataLock.ExitReadLock();
-			}
-
-		}
-#endif
-
 		internal unsafe Task<Slice[]> GetKeysAtVersion(FdbKeySelector[] selectors, long readVersion)
 		{
 			if (m_disposed) ThrowDisposed();
@@ -889,12 +808,13 @@ namespace FoundationDB.Storage.Memory.API
 
 				using (var scratch = m_scratchPool.Use())
 				{
+					var builder = scratch.Builder;
 
 					for (int i = 0; i < selectors.Length; i++)
 					{
 						var selector = selectors[i];
 
-						var lookupKey = PackUserKey(scratch.Builder, selector.Key);
+						var lookupKey = PackUserKey(builder, selector.Key);
 
 						var iterator = ResolveCursor(lookupKey, selector.OrEqual, selector.Offset, sequence);
 						Contract.Assert(iterator != null);
@@ -938,6 +858,119 @@ namespace FoundationDB.Storage.Memory.API
 			return new KeyValuePair<Slice, Slice>(keyData, valueData);
 		}
 
+		/// <summary>Range iterator that will return the keys and values at a specific sequence</summary>
+		internal sealed unsafe class RangeIterator : IDisposable
+		{
+			private readonly MemoryDatabaseHandler m_handler;
+			private readonly ulong m_sequence;
+			private readonly ColaStore.Iterator<IntPtr> m_iterator;
+			private readonly IntPtr m_stopKey;
+			private readonly IComparer<IntPtr> m_comparer;
+			private readonly long m_limit;
+			private readonly long m_targetBytes;
+			private readonly bool m_reverse;
+			private bool m_done;
+			private long m_readKeys;
+			private long m_readBytes;
+			private Key* m_currentKey;
+			private Value* m_currentValue;
+			private bool m_disposed;
+
+			internal RangeIterator(MemoryDatabaseHandler handler, ulong sequence, ColaStore.Iterator<IntPtr> iterator, IntPtr stopKey, IComparer<IntPtr> comparer, bool reverse)
+			{
+				Contract.Requires(handler != null && iterator != null && comparer != null);
+				m_handler = handler;
+				m_sequence = sequence;
+				m_iterator = iterator;
+				m_stopKey = stopKey;
+				m_comparer = comparer;
+				m_reverse = reverse;
+			}
+
+			public long Sequence { get { return (long)m_sequence; } }
+
+			public long Count { get { return m_readKeys; } }
+
+			public long Bytes { get { return m_readBytes; } }
+
+			public long TargetBytes { get { return m_targetBytes; } }
+
+			public bool Reverse { get { return m_reverse; } }
+
+			public Key* Key { get { return m_currentKey; } }
+
+			public Value* Value { get { return m_currentValue; } }
+
+			public bool Done { get { return m_done; } }
+
+			public bool MoveNext()
+			{
+				if (m_done || m_disposed) return false;
+
+				bool gotOne = false;
+
+				while (!gotOne)
+				{
+					var current = m_iterator.Current;
+					DumpKey("current", current);
+
+					Value* value = MemoryDatabaseHandler.ResolveValueAtVersion(current, m_sequence);
+					if (value != null)
+					{
+						if (m_stopKey != IntPtr.Zero)
+						{
+							int c = m_comparer.Compare(current, m_stopKey);
+							if (m_reverse ? (c < 0 /* BEGIN KEY IS INCLUDED! */) : (c >= 0 /* END KEY IS EXCLUDED! */))
+							{	// we reached the end, stop there !
+								DumpKey("stopped at ", current);
+								MarkAsDone();
+								break;
+							}
+						}
+						Key* key = (Key*)current;
+						++m_readKeys;
+						m_readBytes += checked(key->Size + value->Size);
+						m_currentKey = key;
+						m_currentValue = value;
+						gotOne = true;
+					}
+
+					// prepare for the next value
+					if (!(m_reverse ? m_iterator.Previous() : m_iterator.Next()))
+					{
+						// out of data to read ?
+						MarkAsDone();
+						break;
+					}
+				}
+
+				if (gotOne)
+				{ // we have found a value
+					return true;
+				}
+
+				m_currentKey = null;
+				m_currentValue = null;
+				return false;
+			}
+
+			private void MarkAsDone()
+			{
+				m_done = true;
+			}
+
+			public void Dispose()
+			{
+				if (!m_disposed)
+				{
+					m_disposed = true;
+					m_currentKey = null;
+					m_currentValue = null;
+					//TODO: release any locks taken
+				}
+			}
+		}
+
 		internal unsafe Task<FdbRangeChunk> GetRangeAtVersion(FdbKeySelector begin, FdbKeySelector end, int limit, int targetBytes, FdbStreamingMode mode, int iteration, bool reverse, long readVersion)
 		{
 			if (m_disposed) ThrowDisposed();
@@ -948,7 +981,7 @@ namespace FoundationDB.Storage.Memory.API
 			if (limit == 0) limit = 10000;
 			if (targetBytes == 0) targetBytes = int.MaxValue;
 
-			bool done = false;
+			//bool done = false;
 
 			m_dataLock.EnterReadLock();
 			try
@@ -976,6 +1009,7 @@ namespace FoundationDB.Storage.Memory.API
 						if (iterator.Current == IntPtr.Zero) iterator.SeekFirst();
 					}
 
+#if REFACTORED
 					while (limit > 0 && targetBytes > 0)
 					{
 						DumpKey("current", iterator.Current);
@@ -1002,7 +1036,7 @@ namespace FoundationDB.Storage.Memory.API
 							break;
 						}
 					}
-
+#endif
 				}
 				else
 				{ // reverse range read: we start from the key before endKey, and stop once we read a key < beginKey
@@ -1020,13 +1054,19 @@ namespace FoundationDB.Storage.Memory.API
 						// now, set the cursor to the end of the range
 						iterator = ResolveCursor(PackUserKey(scratch.Builder, end.Key), end.OrEqual, end.Offset, sequence);
 						DumpKey("resolved(" + end + ")", iterator.Current);
-						if (iterator.Current == IntPtr.Zero) iterator.SeekLast();
-						DumpKey("endKey", iterator.Current);
-
-						// note: since the end is NOT included in the result, we need to already move the cursor once
-						iterator.Previous();
+						if (iterator.Current == IntPtr.Zero)
+						{
+							iterator.SeekLast();
+							DumpKey("endKey", iterator.Current);
+						}
+						else
+						{
+							// note: since the end is NOT included in the result, we need to already move the cursor once
+							iterator.Previous();
+						}
 					}
 
+#if REFACTORED
 					while (limit > 0 && targetBytes > 0)
 					{
 						DumpKey("current", iterator.Current);
@@ -1054,18 +1094,31 @@ namespace FoundationDB.Storage.Memory.API
 							break;
 						}
 					}
+#endif
 				}
 
-				bool hasMore = !done;
+				// run the iterator until we reach the end of the range, the end of the database, or any count or size limit
+				using (var rangeIterator = new RangeIterator(this, sequence, iterator, stopKey, m_data.Comparer, reverse))
+				{
+					while (rangeIterator.MoveNext())
+					{
+						var item = CopyResultToManagedMemory(buffer, rangeIterator.Key, rangeIterator.Value);
+						results.Add(item);
 
-				var chunk = new FdbRangeChunk(
-					hasMore,
-					results.ToArray(),
-					iteration,
-					reverse
-				);
-				return Task.FromResult(chunk);
+						if (limit > 0 && rangeIterator.Count >= limit) break;
+						if (targetBytes > 0 && rangeIterator.Bytes >= targetBytes) break;
+					}
 
+					bool hasMore = !rangeIterator.Done;
+
+					var chunk = new FdbRangeChunk(
+						hasMore,
+						results.ToArray(),
+						iteration,
+						reverse
+					);
+					return Task.FromResult(chunk);
+				}
 			}
 			finally
 			{
@@ -1103,6 +1156,8 @@ namespace FoundationDB.Storage.Memory.API
 			//HACKHACK: TODO!
 			return (ulong)Volatile.Read(ref m_currentVersion);
 		}
+
+		#region Loading & Saving...
 
 		internal async Task<long> SaveSnapshotAsync(string path, MemorySnapshotOptions options, CancellationToken cancellationToken)
 		{
@@ -1230,29 +1285,34 @@ namespace FoundationDB.Storage.Memory.API
 			}
 		}
 
-		internal async Task LoadSnapshotAsync(string path, MemorySnapshotOptions options, CancellationToken cancellationToken)
+		internal Task LoadSnapshotAsync(string path, MemorySnapshotOptions options, CancellationToken cancellationToken)
 		{
-			Contract.Requires(path != null && options != null);
-
 			if (string.IsNullOrWhiteSpace(path)) throw new ArgumentNullException("path");
-			cancellationToken.ThrowIfCancellationRequested();
+
+			//TODO: should this run on the writer thread ?
+			return Task.Run(() => LoadSnapshotInternal(path, options, cancellationToken), cancellationToken);
+		}
+
+		private void LoadSnapshotInternal(string path, MemorySnapshotOptions options, CancellationToken cancellationToken)
+		{ 
+			Contract.Requires(path != null && options != null);
 
 			var attributes = new Dictionary<string, IFdbTuple>(StringComparer.Ordinal);
 
 			//m_dataLock.EnterWriteLock();
 			try
 			{
-				using (var source = new Win32SnapshotFile(path, true))
+				using (var source = Win32MemoryMappedFile.OpenRead(path))
 				{
 					var snapshot = new SnapshotReader(source);
 
 					// Read the header
 					//Console.WriteLine("> Reading Header");
-					await snapshot.ReadHeaderAsync(cancellationToken);
+					snapshot.ReadHeader(cancellationToken);
 
 					// Read the jump table (at the end)
 					//Console.WriteLine("> Reading Jump Table");
-					await snapshot.ReadJumpTableAsync(cancellationToken);
+					snapshot.ReadJumpTable(cancellationToken);
 
 					// we should have enough information to allocate memory
 					m_data.Clear();
@@ -1271,7 +1331,7 @@ namespace FoundationDB.Storage.Memory.API
 							//Console.WriteLine("> Reading Level " + level);
 							//TODO: right we read the complete level before bulkloading it
 							// we need to be able to bulk load directly from the stream!
-							await snapshot.ReadLevelAsync(level, writer, cancellationToken);
+							snapshot.ReadLevel(level, writer, cancellationToken);
 
 							m_data.InsertItems(writer.Data, ordered: true);
 							writer.Reset();
@@ -1289,6 +1349,8 @@ namespace FoundationDB.Storage.Memory.API
 				//m_dataLock.ExitWriteLock();
 			}
 		}
+
+		#endregion
 
 		#region Writer Thread...
 

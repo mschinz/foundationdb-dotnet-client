@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -96,7 +96,8 @@ namespace FoundationDB.Client
 		/// <param name="cluster">Parent cluster</param>
 		/// <param name="handler">Handle to the native FDB_DATABASE*</param>
 		/// <param name="name">Name of the database</param>
-		/// <param name="contentSubspace">Root namespace of all keys accessible by this database instance</param>
+		/// <param name="contentSubspace">Subspace of the all keys accessible by this database instance</param>
+		/// <param name="directory">Root directory of the database instance</param>
 		/// <param name="readOnly">If true, the database instance will only allow read-only transactions</param>
 		/// <param name="ownsCluster">If true, the cluster instance lifetime is linked with the database instance</param>
 		protected FdbDatabase(IFdbCluster cluster, IFdbDatabaseHandler handler, string name, FdbSubspace contentSubspace, IFdbDirectory directory, bool readOnly, bool ownsCluster)
@@ -133,11 +134,12 @@ namespace FoundationDB.Client
 		/// <summary>Returns a cancellation token that is linked with the lifetime of this database instance</summary>
 		/// <remarks>The token will be cancelled if the database instance is disposed</remarks>
 		//REVIEW: rename this to 'Cancellation'? ('Token' is a keyword that may have different meaning in some apps)
-		public CancellationToken Token { get { return m_cts.Token; } }
+		public CancellationToken Cancellation { get { return m_cts.Token; } }
 
 		/// <summary>If true, this database instance will only allow starting read-only transactions.</summary>
 		public bool IsReadOnly { get { return m_readOnly; } }
 
+		/// <summary>Root directory of this database instance</summary>
 		public FdbDatabasePartition Directory
 		{
 			get
@@ -156,6 +158,7 @@ namespace FoundationDB.Client
 			}
 		}
 
+		/// <summary>When overriden in a derived class, gets a database partition that wraps the root directory of this database instance</summary>
 		protected virtual FdbDatabasePartition GetRootDirectory()
 		{
 			var dl = FdbDirectoryLayer.Create(m_globalSpaceCopy);
@@ -167,7 +170,9 @@ namespace FoundationDB.Client
 		#region Transaction Management...
 
 		/// <summary>Start a new transaction on this database</summary>
+		/// <param name="mode">Mode of the new transaction (read-only, read-write, ...)</param>
 		/// <param name="cancellationToken">Optional cancellation token that can abort all pending async operations started by this transaction.</param>
+		/// <param name="context">If not null, attach the new transaction to an existing context.</param>
 		/// <returns>New transaction instance that can read from or write to the database.</returns>
 		/// <remarks>You MUST call Dispose() on the transaction when you are done with it. You SHOULD wrap it in a 'using' statement to ensure that it is disposed in all cases.</remarks>
 		/// <example>
@@ -283,6 +288,7 @@ namespace FoundationDB.Client
 			return FdbOperationContext.RunReadAsync(this, asyncHandler, null, cancellationToken);
 		}
 
+		//EXPERIMENTAL
 		public Task ReadAsync(Func<IFdbReadOnlyTransaction, Task> asyncHandler, Action<IFdbReadOnlyTransaction> onDone, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunReadAsync(this, asyncHandler, onDone, cancellationToken);
@@ -296,6 +302,7 @@ namespace FoundationDB.Client
 			return FdbOperationContext.RunReadWithResultAsync<R>(this, asyncHandler, null, cancellationToken);
 		}
 
+		//EXPERIMENTAL
 		public Task<R> ReadAsync<R>(Func<IFdbReadOnlyTransaction, Task<R>> asyncHandler, Action<IFdbReadOnlyTransaction> onDone, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunReadWithResultAsync<R>(this, asyncHandler, onDone, cancellationToken);
@@ -313,6 +320,7 @@ namespace FoundationDB.Client
 			return FdbOperationContext.RunWriteAsync(this, handler, null, cancellationToken);
 		}
 
+		//EXPERIMENTAL
 		public Task WriteAsync(Action<IFdbTransaction> handler, Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunWriteAsync(this, handler, onDone, cancellationToken);
@@ -330,6 +338,7 @@ namespace FoundationDB.Client
 			return FdbOperationContext.RunWriteAsync(this, asyncHandler, null, cancellationToken);
 		}
 
+		//EXPERIMENTAL
 		public Task WriteAsync(Func<IFdbTransaction, Task> asyncHandler, Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
 		{
 			//REVIEW: right now, nothing prevents the lambda from calling read methods on the transaction, making this equivalent to calling ReadWriteAsync()
@@ -346,6 +355,7 @@ namespace FoundationDB.Client
 			return FdbOperationContext.RunWriteAsync(this, asyncHandler, null, cancellationToken);
 		}
 
+		//EXPERIMENTAL
 		public Task ReadWriteAsync(Func<IFdbTransaction, Task> asyncHandler, Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunWriteAsync(this, asyncHandler, onDone, cancellationToken);
@@ -359,6 +369,7 @@ namespace FoundationDB.Client
 			return FdbOperationContext.RunWriteWithResultAsync<R>(this, asyncHandler, null, cancellationToken);
 		}
 
+		//EXPERIMENTAL
 		public Task<R> ReadWriteAsync<R>(Func<IFdbTransaction, Task<R>> asyncHandler, Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunWriteWithResultAsync<R>(this, asyncHandler, onDone, cancellationToken);
@@ -448,78 +459,54 @@ namespace FoundationDB.Client
 			}
 		}
 
-		/// <summary>Test if a key is allowed to be used with this database instance</summary>
-		/// <param name="key">Key to test</param>
-		/// <returns>Returns true if the key is not null or empty, does not exceed the maximum key size, and is contained in the global key space of this database instance. Otherwise, returns false.</returns>
-		public bool IsKeyValid(Slice key)
-		{
-			// key is legal if...
-			return key.HasValue							// is not null (note: empty key is allowed)
-				&& key.Count <= Fdb.MaxKeySize			// not too big
-				&& m_globalSpace.Contains(key);			// not outside the namespace
-		}
-
-		/// <summary>Checks that a key is inside the global namespace of this database, and contained in the optional legal key space specified by the user</summary>
-		/// <param name="key">Key to verify</param>
-		/// <param name="endExclusive">If true, the key is allowed to be one past the maximum key allowed by the global namespace</param>
-		/// <exception cref="FdbException">If the key is outside of the allowed keyspace, throws an FdbException with code FdbError.KeyOutsideLegalRange</exception>
-		internal void EnsureKeyIsValid(Slice key, bool endExclusive = false)
-		{
-			var ex = ValidateKey(key, endExclusive);
-			if (ex != null) throw ex;
-		}
-
-		/// <summary>Checks that one or more keys are inside the global namespace of this database, and contained in the optional legal key space specified by the user</summary>
-		/// <param name="keys">Array of keys to verify</param>
-		/// <param name="endExclusive">If true, the keys are allowed to be one past the maximum key allowed by the global namespace</param>
-		/// <exception cref="FdbException">If at least on key is outside of the allowed keyspace, throws an FdbException with code FdbError.KeyOutsideLegalRange</exception>
-		internal void EnsureKeysAreValid(Slice[] keys, bool endExclusive = false)
-		{
-			if (keys == null) throw new ArgumentNullException("keys");
-			foreach(var key in keys)
-			{
-				var ex = ValidateKey(key, endExclusive);
-				if (ex != null) throw ex;
-			}
-		}
-
 		/// <summary>Checks that a key is valid, and is inside the global key space of this database</summary>
 		/// <param name="key">Key to verify</param>
 		/// <param name="endExclusive">If true, the key is allowed to be one past the maximum key allowed by the global namespace</param>
 		/// <returns>An exception if the key is outside of the allowed key space of this database</returns>
-		internal Exception ValidateKey(Slice key, bool endExclusive = false)
+		internal static bool ValidateKey(IFdbDatabase database, Slice key, bool endExclusive, bool ignoreError, out Exception error)
 		{
+			error = null;
+
 			// null or empty keys are not allowed
 			if (key.IsNull)
 			{
-				return Fdb.Errors.KeyCannotBeNull();
+				if (!ignoreError) error = Fdb.Errors.KeyCannotBeNull();
+				return false;
 			}
 
 			// key cannot be larger than maximum allowed key size
 			if (key.Count > Fdb.MaxKeySize)
 			{
-				return Fdb.Errors.KeyIsTooBig(key);
+				if (!ignoreError) error = Fdb.Errors.KeyIsTooBig(key);
+				return false;
 			}
 
 			// special case for system keys
 			if (IsSystemKey(key))
 			{
 				// note: it will fail later if the transaction does not have access to the system keys!
-				return null;
+				return true;
 			}
 
 			// first, it MUST start with the root prefix of this database (if any)
-			if (!m_globalSpace.Contains(key))
+			if (!database.Contains(key))
 			{
 				// special case: if endExclusive is true (we are validating the end key of a ClearRange),
 				// and the key is EXACTLY equal to strinc(globalSpace.Prefix), we let is slide
-				if (!endExclusive || !key.Equals(FdbKey.Increment(m_globalSpace.Key)))
+				if (!endExclusive
+				 || !key.Equals(FdbKey.Increment(database.GlobalSpace.Key))) //TODO: cache this?
 				{
-					return Fdb.Errors.InvalidKeyOutsideDatabaseNamespace(this, key);
+					if (!ignoreError) error = Fdb.Errors.InvalidKeyOutsideDatabaseNamespace(database, key);
+					return false;
 				}
 			}
 
-			return null;
+			return true;
+		}
+
+		public bool Contains(Slice key)
+		{
+			return key.HasValue && m_globalSpace.Contains(key);
 		}
 
 		/// <summary>Returns true if the key is inside the system key space (starts with '\xFF')</summary>

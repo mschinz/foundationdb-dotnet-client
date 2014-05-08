@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,17 +42,11 @@ namespace FoundationDB.Client
 	using System.Threading.Tasks;
 	using SystemIO = System.IO;
 
+	/// <summary>FoundationDB binding</summary>
 	public static partial class Fdb
 	{
 
-		/// <summary>Flag indicating if FDB has been initialized or not</summary>
-		private static bool s_started;
-
-		private static int s_apiVersion;
-		
-		private static EventHandler s_appDomainUnloadHandler;
-
-		internal static readonly byte[] EmptyArray = new byte[0];
+		#region Constants...
 
 		/// <summary>Keys cannot exceed 10,000 bytes</summary>
 		internal const int MaxKeySize = 10 * 1000;
@@ -63,16 +57,70 @@ namespace FoundationDB.Client
 		/// <summary>Maximum size of total written keys and values by a transaction</summary>
 		internal const int MaxTransactionWriteSize = 10 * 1024 * 1024;
 
+		/// <summary>Minimum API version supported by this binding</summary>
+		internal const int MinimumApiVersion = 200; // v2.0.x
+
+		#endregion
+
+		#region Members...
+
+		/// <summary>Flag indicating if FDB has been initialized or not</summary>
+		private static bool s_started; //REVIEW: replace with state flags (Starting, Started, Failed, ...)
+
+		/// <summary>Currently selected API version</summary>
+		private static int s_apiVersion = FdbNative.FDB_API_VERSION;
+
+		/// <summary>Event handler called when the AppDomain gets unloaded</summary>
+		private static EventHandler s_appDomainUnloadHandler;
+
+		internal static readonly byte[] EmptyArray = new byte[0];
+		//TODO: move this somewhere else (Slice?)
+
+		#endregion
+
+		/// <summary>Returns the minimum API version currently supported by this binding</summary>
+		public static int GetMinApiVersion()
+		{
+			return MinimumApiVersion;
+		}
+
 		/// <summary>Returns the maximum API version currently supported by this binding</summary>
 		public static int GetMaxApiVersion()
 		{
 			return FdbNative.GetMaxApiVersion();
 		}
 
-		/// <summary>Returns the currently selected API version (or 0 if not started)</summary>
+		/// <summary>Returns the currently selected API version</summary>
+		/// <remarks>Unless explicitely selected by calling <see cref="UseApiVersion"/> before, the default API version level will be returned</remarks>
 		public static int ApiVersion
 		{
 			get { return s_apiVersion; }
+		}
+
+		/// <summary>Sets the desired API version of the binding</summary>
+		/// <remarks>The version can only be set before calling <see cref="Fdb.Start()"/> or any method that indirectly calls it.</remarks>
+		/// <exception cref="InvalidOperationException">When attempting to change the API version after the binding has been started.</exception>
+		/// <exception cref="ArgumentException">When attempting to set a negative version, or a version that is either less or greater than the minimum and maximum supported versions.</exception>
+		public static void UseApiVersion(int value)
+		{
+			if (s_started) throw new InvalidOperationException("You cannot change the API Version after Fdb.Start() has been called.");
+			if (value < 0) throw new ArgumentException("API version must be a positive integer.");
+
+			//note: we don't actually select the version yet, only when Start() is called.
+
+			if (value == 0)
+			{ // 0 means "use the default version"
+				s_apiVersion = FdbNative.FDB_API_VERSION;
+			}
+			else
+			{
+				int min = GetMinApiVersion();
+				if (value < min) throw new ArgumentException(String.Format("The minimum API version supported by this binding is {0} and the default version is {1}.", min, FdbNative.FDB_API_VERSION));
+				int max = GetMaxApiVersion();
+				if (value > max) throw new ArgumentException(String.Format("The maximum API version supported by this binding is {0} and the default version is {1}.", max, FdbNative.FDB_API_VERSION));
+
+				s_apiVersion = value;
+			}
 		}
 
 		/// <summary>Returns true if the error code represents a success</summary>
@@ -327,7 +375,7 @@ namespace FoundationDB.Client
 		/// <summary>Opens a connection to an existing FoundationDB cluster using the default cluster file</summary>
 		/// <param name="cancellationToken">Token used to abort the operation</param>
 		/// <returns>Task that will return an FdbCluster, or an exception</returns>
-		public static Task<FdbCluster> CreateClusterAsync(CancellationToken cancellationToken)
+		public static Task<IFdbCluster> CreateClusterAsync(CancellationToken cancellationToken)
 		{
 			return CreateClusterAsync(null, cancellationToken);
 		}
@@ -336,7 +384,12 @@ namespace FoundationDB.Client
 		/// <param name="clusterFile">Path to the 'fdb.cluster' file to use, or null for the default cluster file</param>
 		/// <param name="cancellationToken">Token used to abort the operation</param>
 		/// <returns>Task that will return an FdbCluster, or an exception</returns>
-		public static Task<FdbCluster> CreateClusterAsync(string clusterFile, CancellationToken cancellationToken)
+		public static async Task<IFdbCluster> CreateClusterAsync(string clusterFile, CancellationToken cancellationToken)
+		{
+			return await CreateClusterInternalAsync(clusterFile, cancellationToken).ConfigureAwait(false);
+		}
+
+		public static Task<FdbCluster> CreateClusterInternalAsync(string clusterFile, CancellationToken cancellationToken)
 		{
 			EnsureIsStarted();
 
@@ -362,8 +415,8 @@ namespace FoundationDB.Client
 		/// </summary>
 		/// <param name="cancellationToken">Token used to abort the operation</param>
 		/// <returns>Task that will return an FdbDatabase, or an exception</returns>
-		/// <exception cref="System.OperationCanceledException">If the token <paramref name="cancellationToken"/> is cancelled</exception>
-		public static Task<FdbDatabase> OpenAsync(CancellationToken cancellationToken = default(CancellationToken))
+		/// <exception cref="OperationCanceledException">If the token <paramref name="cancellationToken"/> is cancelled</exception>
+		public static Task<IFdbDatabase> OpenAsync(CancellationToken cancellationToken = default(CancellationToken))
 		{
 			return OpenAsync(clusterFile: null, dbName: null, globalSpace: FdbSubspace.Empty, cancellationToken: cancellationToken);
 		}
@@ -374,8 +427,8 @@ namespace FoundationDB.Client
 		/// <param name="globalSpace">Global subspace used as a prefix for all keys and layers</param>
 		/// <param name="cancellationToken">Token used to abort the operation</param>
 		/// <returns>Task that will return an FdbDatabase, or an exception</returns>
-		/// <exception cref="System.OperationCanceledException">If the token <paramref name="cancellationToken"/> is cancelled</exception>
-		public static Task<FdbDatabase> OpenAsync(FdbSubspace globalSpace, CancellationToken cancellationToken = default(CancellationToken))
+		/// <exception cref="OperationCanceledException">If the token <paramref name="cancellationToken"/> is cancelled</exception>
+		public static Task<IFdbDatabase> OpenAsync(FdbSubspace globalSpace, CancellationToken cancellationToken = default(CancellationToken))
 		{
 			return OpenAsync(clusterFile: null, dbName: null, globalSpace: globalSpace, cancellationToken: cancellationToken);
 		}
@@ -388,9 +441,9 @@ namespace FoundationDB.Client
 		/// <param name="cancellationToken">Cancellation Token</param>
 		/// <returns>Task that will return an FdbDatabase, or an exception</returns>
 		/// <remarks>As of 1.0, the only supported database name is "DB"</remarks>
-		/// <exception cref="System.InvalidOperationException">If <paramref name="dbName"/> is anything other than "DB"</exception>
-		/// <exception cref="System.OperationCanceledException">If the token <paramref name="cancellationToken"/> is cancelled</exception>
-		public static Task<FdbDatabase> OpenAsync(string clusterFile, string dbName, CancellationToken cancellationToken = default(CancellationToken))
+		/// <exception cref="InvalidOperationException">If <paramref name="dbName"/> is anything other than "DB"</exception>
+		/// <exception cref="OperationCanceledException">If the token <paramref name="cancellationToken"/> is cancelled</exception>
+		public static Task<IFdbDatabase> OpenAsync(string clusterFile, string dbName, CancellationToken cancellationToken = default(CancellationToken))
 		{
 			return OpenAsync(clusterFile, dbName, FdbSubspace.Empty, readOnly: false, cancellationToken: cancellationToken);
 		}
@@ -401,12 +454,18 @@ namespace FoundationDB.Client
 		/// <param name="clusterFile">Path to the 'fdb.cluster' file to use, or null for the default cluster file</param>
 		/// <param name="dbName">Name of the database. Must be 'DB'</param>
 		/// <param name="globalSpace">Global subspace used as a prefix for all keys and layers</param>
+		/// <param name="readOnly">If true, the database instance will only allow read operations</param>
 		/// <param name="cancellationToken">Token used to abort the operation</param>
 		/// <returns>Task that will return an FdbDatabase, or an exception</returns>
 		/// <remarks>As of 1.0, the only supported database name is 'DB'</remarks>
-		/// <exception cref="System.InvalidOperationException">If <paramref name="dbName"/> is anything other than 'DB'</exception>
-		/// <exception cref="System.OperationCanceledException">If the token <paramref name="cancellationToken"/> is cancelled</exception>
-		public static async Task<FdbDatabase> OpenAsync(string clusterFile, string dbName, FdbSubspace globalSpace, bool readOnly = false, CancellationToken cancellationToken = default(CancellationToken))
+		/// <exception cref="InvalidOperationException">If <paramref name="dbName"/> is anything other than 'DB'</exception>
+		/// <exception cref="OperationCanceledException">If the token <paramref name="cancellationToken"/> is cancelled</exception>
+		public static async Task<IFdbDatabase> OpenAsync(string clusterFile, string dbName, FdbSubspace globalSpace, bool readOnly = false, CancellationToken cancellationToken = default(CancellationToken))
+		{
+			return await OpenInternalAsync(clusterFile, dbName, globalSpace, readOnly, cancellationToken);
+		}
+
+		internal static async Task<FdbDatabase> OpenInternalAsync(string clusterFile, string dbName, FdbSubspace globalSpace, bool readOnly, CancellationToken cancellationToken)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 
@@ -420,9 +479,9 @@ namespace FoundationDB.Client
 			bool success = false;
 			try
 			{
-				cluster = await CreateClusterAsync(clusterFile, cancellationToken).ConfigureAwait(false);
+				cluster = await CreateClusterInternalAsync(clusterFile, cancellationToken).ConfigureAwait(false);
 				//note: since the cluster is not provided by the caller, link it with the database's Dispose()
-				db = await cluster.OpenDatabaseAsync(dbName, globalSpace, readOnly: readOnly, ownsCluster: true, cancellationToken: cancellationToken).ConfigureAwait(false);
+				db = await cluster.OpenDatabaseInternalAsync(dbName, globalSpace, readOnly: readOnly, ownsCluster: true, cancellationToken: cancellationToken).ConfigureAwait(false);
 				success = true;
 				return db;
 			}
@@ -446,6 +505,7 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>Select the correct API version, and start the Network Thread</summary>
+		/// <remarks>If you need a specific API version level, it must be defined by calling <see cref="UseApiVersion"/> before calling this method, otherwise the default API version will be selected.</remarks>
 		public static void Start()
 		{
 			if (s_started) return;
@@ -454,19 +514,34 @@ namespace FoundationDB.Client
 
 			s_started = true;
 
-			// by default, always use the highest version number
-			int apiVersion = FdbNative.FDB_API_VERSION;
+			int apiVersion = s_apiVersion;
+			if (apiVersion <= 0) apiVersion = FdbNative.FDB_API_VERSION;
 
 			if (Logging.On) Logging.Info(typeof(Fdb), "Start", String.Format("Selecting fdb API version {0}", apiVersion));
+
 			FdbError err = FdbNative.SelectApiVersion(apiVersion);
+			if (err != FdbError.Success)
+			{
+				if (Logging.On) Logging.Error(typeof(Fdb), "Start", String.Format("Failed to fdb API version {0}: {1}", apiVersion, err));
+
+				switch (err)
+				{
+					case FdbError.ApiVersionNotSupported:
+					{ // bad version was selected ?
+						// note: we already bound check the values before, so that means that fdb_c.dll is either an older version or an incompatible new version.
+						throw new FdbException(err, String.Format("The API version {0} is not supported by the FoundationDB client library (fdb_c.dll) installed on this system. The binding only supports versions {1} to {2}. You either need to upgrade the .NET binding or the FoundationDB client library to a newer version.", apiVersion, GetMinApiVersion(), GetMaxApiVersion()));
+					}
 #if DEBUG
-			if (err == FdbError.ApiVersionAlreadySet)
-			{ // Temporary hack to allow multiple debugging using the cached host process in VS
-				Console.WriteLine("REUSING EXISTING PROCESS! IF THINGS BREAK IN WEIRD WAYS, PLEASE RESTART THE PROCESS!");
-				err = FdbError.Success;
-			}
+					case FdbError.ApiVersionAlreadySet:
+					{ // Temporary hack to allow multiple debugging using the cached host process in VS
+						Console.WriteLine("REUSING EXISTING PROCESS! IF THINGS BREAK IN WEIRD WAYS, PLEASE RESTART THE PROCESS!");
+						err = FdbError.Success;
+						break;
+					}
 #endif
-			DieOnError(err);
+				}
+				DieOnError(err);
+			}
 			s_apiVersion = apiVersion;
 			
 			if (!string.IsNullOrWhiteSpace(Fdb.Options.TracePath))
@@ -538,7 +613,7 @@ namespace FoundationDB.Client
 				if (Logging.On) Logging.Verbose(typeof(Fdb), "Start", "Setting up Network Thread...");
 
 				DieOnError(FdbNative.SetupNetwork());
-				s_started = true;
+				s_started = true; //BUGBUG: already set at the start of the method. Maybe we need state flags ?
 			}
 
 			if (Logging.On) Logging.Info(typeof(Fdb), "Start", "Network thread has been set up");

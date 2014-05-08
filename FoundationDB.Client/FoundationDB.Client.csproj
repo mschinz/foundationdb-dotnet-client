@@ -144,6 +144,7 @@
     <Compile Include="Layers\Tuples\Formatters\ITupleFormattable.cs" />
     <Compile Include="Layers\Tuples\FdbTupleComparisons.cs" />
     <Compile Include="Layers\Tuples\FdbJoinedTuple.cs" />
+    <Compile Include="Subspaces\IFdbSubspace.cs" />
     <Compile Include="Subspaces\FdbSubspaceExtensions.cs" />
     <Compile Include="Layers\Tuples\FdbLinkedTuple.cs" />
     <Compile Include="Layers\Tuples\IFdbTuple.cs" />
@@ -190,6 +191,7 @@
     <Compile Include="Encoders\KeyValueEncoders.cs" />
     <Compile Include="TypeSystem\FdbTypeCodec`1.cs" />
     <Compile Include="Encoders\ISliceSerializable.cs" />
+    <Compile Include="Utils\SlicePairComparer.cs" />
     <Compile Include="Utils\SliceHelpers.cs" />
     <Compile Include="Utils\SliceComparer.cs" />
     <Compile Include="Utils\SliceBuffer.cs" />

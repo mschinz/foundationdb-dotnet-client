@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -39,7 +39,7 @@ namespace FoundationDB.Client.Converters
 	{
 
 		/// <summary>Pair of types that can be used as a key in a dictionary</summary>
-		private struct TypePair
+		internal struct TypePair
 		{
 			public readonly Type Left;
 			public readonly Type Right;
@@ -68,8 +68,13 @@ namespace FoundationDB.Client.Converters
 		}
 
 		/// <summary>Helper class to use TypePair as keys in a dictionnary</summary>
-		private sealed class TypePairComparer : IEqualityComparer<TypePair>
+		internal sealed class TypePairComparer : IEqualityComparer<TypePair>
 		{ // REVIEW: this is redundant with FdbConverters.TypePairComparer!
+
+			public static readonly TypePairComparer Default = new TypePairComparer();
+
+			private TypePairComparer() { }
+
 			public bool Equals(TypePair x, TypePair y)
 			{
 				return x.Left == y.Left && x.Right == y.Right;
@@ -83,12 +88,12 @@ namespace FoundationDB.Client.Converters
 
 		/// <summary>Cache of all the comparison lambda for a pair of types</summary>
 		/// <remarks>Contains lambda that can compare two objects (of different types) for "similarity"</remarks>
-		private static readonly ConcurrentDictionary<TypePair, Func<object, object, bool>> EqualityComparers = new ConcurrentDictionary<TypePair, Func<object, object, bool>>(new TypePairComparer());
+		private static readonly ConcurrentDictionary<TypePair, Func<object, object, bool>> EqualityComparers = new ConcurrentDictionary<TypePair, Func<object, object, bool>>(ComparisonHelper.TypePairComparer.Default);
 
 		/// <summary>Tries to convert an object into an equivalent string representation (for equality comparison)</summary>
 		/// <param name="value">Object to adapt</param>
 		/// <returns>String equivalent of the object</returns>
-		public static string TryAdaptToString(object value, Type t)
+		internal static string TryAdaptToString(object value)
 		{
 			if (value == null) return null;
 
@@ -97,8 +102,10 @@ namespace FoundationDB.Client.Converters
 
 			if (value is char) return new string((char)value, 1);
 
-			if (value is Slice) return ((Slice) value).ToAscii();
-			if (value is byte[]) return Slice.Create(value as byte[]).ToAscii();
+			if (value is Slice) return ((Slice) value).ToAscii(); //REVIEW: or ToUnicode() ?
+
+			var bstr = value as byte[];
+			if (bstr != null) return Slice.Create(bstr).ToAscii(); //REVIEW: or ToUnicode() ?
 
 			var fmt = value as IFormattable;
 			if (fmt != null) return fmt.ToString(null, CultureInfo.InvariantCulture);
@@ -108,12 +115,13 @@ namespace FoundationDB.Client.Converters
 
 		/// <summary>Tries to convert an object into an equivalent double representation (for equality comparison)</summary>
 		/// <param name="value">Object to adapt</param>
+		/// <param name="type">Type of the object to adapt</param>
 		/// <returns>Double equivalent of the object</returns>
-		public static double? TryAdaptToDecimal(object value, Type t)
+		internal static double? TryAdaptToDecimal(object value, Type type)
 		{
 			if (value != null)
 			{
-				switch (Type.GetTypeCode(t))
+				switch (Type.GetTypeCode(type))
 				{
 					case TypeCode.Int16: return (double?)(short)value;
 					case TypeCode.UInt16: return (double?)(ushort)value;
@@ -123,6 +131,7 @@ namespace FoundationDB.Client.Converters
 					case TypeCode.UInt64: return (double?)(ulong)value;
 					case TypeCode.Single: return (double?)(float)value;
 					case TypeCode.Double: return (double)value;
+					//TODO: string?
 				}
 			}
 			return null;
@@ -130,12 +139,13 @@ namespace FoundationDB.Client.Converters
 
 		/// <summary>Tries to convert an object into an equivalent Int64 representation (for equality comparison)</summary>
 		/// <param name="value">Object to adapt</param>
+		/// <param name="type">Type of the object to adapt</param>
 		/// <returns>Int64 equivalent of the object</returns>
-		public static long? TryAdaptToInteger(object value, Type t)
+		internal static long? TryAdaptToInteger(object value, Type type)
 		{
 			if (value != null)
 			{
-				switch (Type.GetTypeCode(t))
+				switch (Type.GetTypeCode(type))
 				{
 					case TypeCode.Int16: return (long?)(short)value;
 					case TypeCode.UInt16: return (long?)(ushort)value;
@@ -145,6 +155,7 @@ namespace FoundationDB.Client.Converters
 					case TypeCode.UInt64: return (long?)(ulong)value;
 					case TypeCode.Single: return (long?)(float)value;
 					case TypeCode.Double: return (long?)(double)value;
+					//TODO: string?
 				}
 			}
 			return null;
@@ -189,7 +200,7 @@ namespace FoundationDB.Client.Converters
 				{
 					if (x == null) return y == null;
 					if (y == null) return false;
-					return object.ReferenceEquals(x, y) || (TryAdaptToString(x, t1) == TryAdaptToString(y, t2));
+					return object.ReferenceEquals(x, y) || (TryAdaptToString(x) == TryAdaptToString(y));
 				};
 			}
 

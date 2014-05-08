@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -31,15 +31,18 @@ namespace FoundationDB.Client
 	using System;
 	using System.Threading;
 
-	/// <summary>FoundationDB database instance that supports read operations.</summary>
-	public interface IFdbDatabase : IFdbReadOnlyTransactional, IFdbTransactional, IFdbKey, IDisposable
+	/// <summary>Database connection context.</summary>
+	public interface IFdbDatabase : IFdbReadOnlyTransactional, IFdbTransactional, IFdbSubspace, IFdbKey, IDisposable
 	{
 		/// <summary>Name of the database</summary>
 		string Name { get; }
 
+		/// <summary>Cluster of the database</summary>
+		IFdbCluster Cluster { get; }
+
 		/// <summary>Returns a cancellation token that is linked with the lifetime of this database instance</summary>
 		/// <remarks>The token will be cancelled if the database instance is disposed</remarks>
-		CancellationToken Token { get; }
+		CancellationToken Cancellation { get; }
 
 		/// <summary>Returns the global namespace used by this database instance</summary>
 		/// <remarks>Makes a copy of the subspace tuple, so you should not call this property a lot. Use any of the Partition(..) methods to create a subspace of the database</remarks>
@@ -48,12 +51,21 @@ namespace FoundationDB.Client
 		/// <summary>Directory partition of this database instance</summary>
 		FdbDatabasePartition Directory { get; }
 
+		/// <summary>If true, this database instance will only allow starting read-only transactions.</summary>
 		bool IsReadOnly { get; }
 
+		/// <summary>Set a parameter-less option on this database</summary>
+		/// <param name="option">Option to set</param>
 		void SetOption(FdbDatabaseOption option);
 
+		/// <summary>Set an option on this database that takes a string value</summary>
+		/// <param name="option">Option to set</param>
+		/// <param name="value">Value of the parameter (can be null)</param>
 		void SetOption(FdbDatabaseOption option, string value);
 
+		/// <summary>Set an option on this database that takes an integer value</summary>
+		/// <param name="option">Option to set</param>
+		/// <param name="value">Value of the parameter</param>
 		void SetOption(FdbDatabaseOption option, long value);
 
 		/// <summary>Default Timeout value (in milliseconds) for all transactions created from this database instance.</summary>
@@ -78,6 +90,12 @@ namespace FoundationDB.Client
 		///		await tr.CommitAsync();
 		/// }</example>
 		IFdbTransaction BeginTransaction(FdbTransactionMode mode, CancellationToken cancellationToken, FdbOperationContext context = null);
+
+		/// <summary>Test if a key is inside the range of keys allowed to be read or writtent by the database</summary>
+		/// <param name="key">Key to test</param>
+		/// <returns>True if the key is inside the database keyspace, or inside the system keyspace.</returns>
+		/// <remarks>Please note that this method does not test if the key *actually* exists in the database, only if the key is not ouside the allowed range of keys defined by <see cref="GlobalSpace"/>.</remarks>
+		bool Contains(Slice key);
 
 	}
 

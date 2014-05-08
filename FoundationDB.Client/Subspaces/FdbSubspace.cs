@@ -32,7 +32,7 @@ namespace FoundationDB.Client
 	using System;
 
 	/// <summary>Adds a prefix on every keys, to group them inside a common subspace</summary>
-	public class FdbSubspace : IFdbKey, IEquatable<FdbSubspace>, IComparable<FdbSubspace>
+	public class FdbSubspace : IFdbSubspace, IFdbKey, IEquatable<FdbSubspace>, IComparable<FdbSubspace>
 	{
 		/// <summary>Empty subspace, that does not add any prefix to the keys</summary>
 		public static readonly FdbSubspace Empty = new FdbSubspace(Slice.Empty);
@@ -135,7 +135,7 @@ namespace FoundationDB.Client
 			{
 				if (tuple == null) throw new ArgumentNullException("tuple");
 				if (tuple.Count == 0) return this;
-				return new FdbSubspace(FdbTuple.Concat(GetKeyPrefix(), tuple));
+				return new FdbSubspace(FdbTuple.PackWithPrefix(GetKeyPrefix(), tuple));
 			}
 		}
 
@@ -162,7 +162,7 @@ namespace FoundationDB.Client
 		/// <summary>Tests whether the specified <paramref name="key"/> starts with this Subspace's prefix, indicating that the Subspace logically contains <paramref name="key"/>.</summary>
 		/// <param name="key">The key to be tested</param>
 		/// <remarks>The key Slice.Nil is not contained by any Subspace, so subspace.Contains(Slice.Nil) will always return false</remarks>
-		public bool Contains(Slice key)
+		public virtual bool Contains(Slice key)
 		{
 			return key.HasValue && key.StartsWith(this.InternalKey);
 		}
