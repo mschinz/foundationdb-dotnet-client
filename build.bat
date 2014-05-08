@@ -29,4 +29,3 @@ shift
 shift
 
 "build\tools\FAKE\tools\Fake.exe" "build\build.fsx" "target=%TARGET%" "version=%VERSION%"
-pause
