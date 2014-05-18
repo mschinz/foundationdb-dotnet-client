@@ -20,7 +20,7 @@ namespace FoundationDB.Storage.Memory.Core
 		/// <summary>Debug view helper</summary>
 		private sealed class DebugView
 		{
-			private ColaOrderedDictionary<TKey, TValue> m_dictionary;
+			private readonly ColaOrderedDictionary<TKey, TValue> m_dictionary;
 
 			public DebugView(ColaOrderedDictionary<TKey, TValue> dictionary)
 			{
@@ -138,7 +138,7 @@ namespace FoundationDB.Storage.Memory.Core
 			if (!m_items.SetOrAdd(new KeyValuePair<TKey, TValue>(key, value), overwriteExistingValue: false))
 			{
 				--m_version;
-				throw new InvalidOperationException("An entry with the same key but a different value already exists.");
+				ThrowKeyAlreadyExists();
 			}
 		}
 
@@ -147,7 +147,7 @@ namespace FoundationDB.Storage.Memory.Core
 		/// <param name="value">The key value to set.</param>
 		public void SetItem(TKey key, TValue value)
 		{
-			if (key == null) throw new ArgumentNullException("key");
+			if (key == null) ThrowKeyCannotBeNull();
 			++m_version;
 			m_items.SetOrAdd(new KeyValuePair<TKey, TValue>(key, value), overwriteExistingValue: true);
 		}
@@ -178,6 +178,7 @@ namespace FoundationDB.Storage.Memory.Core
 		/// <summary>Try to add an entry with the specified key and value to the sorted dictionary, if it does not already exists.</summary>
 		/// <param name="key">The key of the entry to add.</param>
 		/// <param name="value">The value of the entry to add.</param>
+		/// <param name="actualValue">Receives the previous value if <paramref name="key"/> already exists, or <paramref name="value"/> if it was inserted</param>
 		/// <returns>true if the key did not previously exist and was inserted; otherwise, false.</returns>
 		public bool GetOrAdd(TKey key, TValue value, out TValue actualValue)
 		{
@@ -370,6 +371,11 @@ namespace FoundationDB.Storage.Memory.Core
 		private static void ThrowKeyNotFound()
 		{
 			throw new KeyNotFoundException();
+		}
+
+		private static void ThrowKeyAlreadyExists()
+		{
+			throw new InvalidOperationException("An entry with the same key but a different value already exists.");
 		}
 
 		//TODO: remove or set to internal !

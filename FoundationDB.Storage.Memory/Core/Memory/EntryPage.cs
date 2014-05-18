@@ -27,13 +27,13 @@ namespace FoundationDB.Storage.Memory.Core
 		/// <summary>Handle to the allocated memory</summary>
 		protected SafeHandle m_handle;
 
-		public EntryPage(SafeHandle handle, uint capacity)
+		protected EntryPage(SafeHandle handle, uint capacity)
 		{
 			Contract.Requires(handle != null && !handle.IsInvalid && !handle.IsClosed);
 
 			m_handle = handle;
 			m_capacity = capacity;
-			m_start = (byte*) handle.DangerousGetHandle().ToPointer();
+			m_start = (byte*) handle.DangerousGetHandle();
 			m_end = m_start + capacity;
 			m_current = m_start;
 			CheckInvariants();
@@ -57,7 +57,7 @@ namespace FoundationDB.Storage.Memory.Core
 		public int Count { get { return m_count; } }
 
 		/// <summary>Number of bytes allocated inside this page</summary>
-		public long MemoryUsage { get { return (long)m_current - (long)m_start; } }
+		public ulong MemoryUsage { get { return (ulong)(m_current - m_start); } }
 
 		/// <summary>Type of the entries stored in this page</summary>
 		public abstract EntryType Type { get; }

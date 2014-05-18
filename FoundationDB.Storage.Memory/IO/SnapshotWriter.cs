@@ -17,7 +17,7 @@ namespace FoundationDB.Storage.Memory.IO
 
 	internal class SnapshotWriter
 	{
-		private Win32SnapshotFile m_file;
+		private readonly Win32SnapshotFile m_file;
 		private SliceWriter m_writer;
 
 		private readonly int m_levels;
@@ -170,7 +170,7 @@ namespace FoundationDB.Storage.Memory.IO
 						continue;
 					}
 					Key* key = (Key*)segment[i]; //.ToPointer();
-					Contract.Assert(key != null && key->Size <= int.MaxValue);
+					Contract.Assert(key != null && key->Size <= MemoryDatabaseHandler.MAX_KEY_SIZE);
 
 					// Key Size
 					uint size = key->Size;

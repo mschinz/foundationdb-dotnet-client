@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -81,9 +81,7 @@ namespace FoundationDB.Filters.Logging
 
 			lock (m_lock)
 			{
-				int remaining = m_buffer.Length - m_offset;
-
-				if (slice.Count > remaining)
+				if (slice.Count > m_buffer.Length - m_offset)
 				{ // not enough ?
 					if (slice.Count >= 2048)
 					{
@@ -91,7 +89,6 @@ namespace FoundationDB.Filters.Logging
 					}
 					m_buffer = new byte[4096];
 					m_offset = 0;
-					remaining = m_buffer.Length;
 				}
 
 				int start = m_offset;
@@ -157,7 +154,7 @@ namespace FoundationDB.Filters.Logging
 #if DEBUG
 				catch(Exception e)
 				{
-					System.Diagnostics.Trace.WriteLine("Logged transction handler failed: " + e.ToString());
+					System.Diagnostics.Debug.WriteLine("Logged transaction handler failed: " + e.ToString());
 				}
 #else
 				catch { }
@@ -273,8 +270,7 @@ namespace FoundationDB.Filters.Logging
 			).ConfigureAwait(false);
 
 			this.Log.CommittedUtc = DateTimeOffset.UtcNow;
-			//this.Log.Stop(this);
-			//OnCommitted();
+			this.Log.CommittedVersion = m_transaction.GetCommittedVersion();
 		}
 
 		public override Task OnErrorAsync(FdbError code)

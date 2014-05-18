@@ -44,7 +44,6 @@ namespace FoundationDB.Client
 	{
 
 		/// <summary>Async iterator that fetches the results by batch, but return them one by one</summary>
-		/// <typeparam name="TResult">Type of the results returned</typeparam>
 		[DebuggerDisplay("State={m_state}, Current={m_current}, Iteration={Iteration}, AtEnd={AtEnd}, HasMore={HasMore}")]
 		private sealed class PagingIterator : FdbAsyncIterator<KeyValuePair<Slice, Slice>[]>
 		{
@@ -103,13 +102,30 @@ namespace FoundationDB.Client
 
 			#region IFdbAsyncEnumerator<T>...
 
-			protected override Task<bool> OnFirstAsync(CancellationToken cancellationToken)
+			protected override async Task<bool> OnFirstAsync(CancellationToken cancellationToken)
 			{
 				this.Remaining = this.Query.Limit > 0 ? this.Query.Limit : default(int?);
+
 				this.Begin = this.Query.Begin;
 				this.End = this.Query.End;
 
-				return TaskHelpers.TrueTask;
+				var bounds = this.Query.OriginalRange;
+
+				// if the original range has been changed, we need to ensure that the current begin/end to not overflow:
+				if (this.Begin != bounds.Begin || this.End != bounds.End)
+				{
+					//TODO: find a better way to do this!
+					var keys = await this.Transaction.GetKeysAsync(new[] { bounds.Begin, this.Begin, bounds.End, this.End }).ConfigureAwait(false);
+
+					var min = keys[0] >= keys[1] ? keys[0] : keys[1];
+					var max = keys[2] <= keys[3] ? keys[2] : keys[3];
+					if (min >= max) return false;	// range is empty
+
+					// rewrite the initial selectors with the bounded keys
+					this.Begin = FdbKeySelector.FirstGreaterOrEqual(min);
+					this.End = FdbKeySelector.FirstGreaterOrEqual(max);
+				}
+				return true;
 			}
 
 			protected override Task<bool> OnNextAsync(CancellationToken cancellationToken)
@@ -183,7 +199,7 @@ namespace FoundationDB.Client
 					tr = tr.Snapshot;
 				}
 
-				//BUGBUG: mix the custom cancellation token with the transaction, is it is diffent !
+				//BUGBUG: mix the custom cancellation token with the transaction, if it is diffent !
 				var task = tr
 					.GetRangeAsync(this.Begin, this.End, options, this.Iteration)
 					.Then((result) =>

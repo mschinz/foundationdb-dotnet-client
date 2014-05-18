@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -125,7 +125,7 @@ namespace FoundationDB.Client
 				m_parent.m_database.EnsureKeysAreValid(keys);
 
 #if DEBUG
-				if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "GetValuesAsync", String.Format("Getting batch of {0} values ...", keys.Length.ToString()));
+				if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "GetValuesAsync", String.Format("Getting batch of {0} values ...", keys.Length));
 #endif
 
 				return m_parent.m_handler.GetValuesAsync(keys, snapshot: true, cancellationToken: m_parent.m_cancellation);
@@ -158,7 +158,7 @@ namespace FoundationDB.Client
 				}
 
 #if DEBUG
-				if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "GetKeysCoreAsync", String.Format("Getting batch of {0} keys ...", selectors.Length.ToString()));
+				if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "GetKeysCoreAsync", String.Format("Getting batch of {0} keys ...", selectors.Length));
 #endif
 
 				return m_parent.m_handler.GetKeysAsync(selectors, snapshot: true, cancellationToken: m_parent.m_cancellation);
@@ -171,7 +171,7 @@ namespace FoundationDB.Client
 				m_parent.m_database.EnsureKeyIsValid(beginInclusive.Key);
 				m_parent.m_database.EnsureKeyIsValid(endExclusive.Key);
 
-				options = FdbRangeOptions.EnsureDefaults(options, 0, 0, FdbStreamingMode.Iterator, false);
+				options = FdbRangeOptions.EnsureDefaults(options, null, null, FdbStreamingMode.Iterator, false);
 				options.EnsureLegalValues();
 
 				// The iteration value is only needed when in iterator mode, but then it should start from 1

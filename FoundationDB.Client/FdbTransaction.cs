@@ -96,6 +96,7 @@ namespace FoundationDB.Client
 			m_context = context;
 			m_database = db;
 			m_id = id;
+			//REVIEW: the operation context may already have created its own CTS, maybe we can merge them ?
 			m_cts = CancellationTokenSource.CreateLinkedTokenSource(context.Cancellation);
 			m_cancellation = m_cts.Token;
 
@@ -198,7 +199,7 @@ namespace FoundationDB.Client
 		{
 			EnsureNotFailedOrDisposed();
 
-			if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "SetOption", String.Format("Setting transaction option {0} to {1}", option.ToString(), value.ToString()));
+			if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "SetOption", String.Format("Setting transaction option {0} to {1}", option.ToString(), value));
 
 			// Spec says: "If the option is documented as taking an Int parameter, value must point to a signed 64-bit integer (little-endian), and value_length must be 8."
 			var data = Slice.FromFixed64(value);
@@ -283,7 +284,7 @@ namespace FoundationDB.Client
 			m_database.EnsureKeysAreValid(keys);
 
 #if DEBUG
-			if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "GetValuesAsync", String.Format("Getting batch of {0} values ...", keys.Length.ToString()));
+			if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "GetValuesAsync", String.Format("Getting batch of {0} values ...", keys.Length));
 #endif
 
 			return m_handler.GetValuesAsync(keys, snapshot: false, cancellationToken: m_cancellation);
@@ -310,7 +311,7 @@ namespace FoundationDB.Client
 			m_database.EnsureKeyIsValid(beginInclusive.Key);
 			m_database.EnsureKeyIsValid(endExclusive.Key, endExclusive: true);
 
-			options = FdbRangeOptions.EnsureDefaults(options, 0, 0, FdbStreamingMode.Iterator, false);
+			options = FdbRangeOptions.EnsureDefaults(options, null, null, FdbStreamingMode.Iterator, false);
 			options.EnsureLegalValues();
 
 			// The iteration value is only needed when in iterator mode, but then it should start from 1
@@ -328,7 +329,7 @@ namespace FoundationDB.Client
 			this.Database.EnsureKeyIsValid(begin.Key);
 			this.Database.EnsureKeyIsValid(end.Key, endExclusive: true);
 
-			options = FdbRangeOptions.EnsureDefaults(options, 0, 0, FdbStreamingMode.Iterator, false);
+			options = FdbRangeOptions.EnsureDefaults(options, null, null, FdbStreamingMode.Iterator, false);
 			options.EnsureLegalValues();
 
 #if DEBUG
@@ -394,7 +395,7 @@ namespace FoundationDB.Client
 			}
 
 #if DEBUG
-			if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "GetKeysAsync", String.Format("Getting batch of {0} keys ...", selectors.Length.ToString()));
+			if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "GetKeysAsync", String.Format("Getting batch of {0} keys ...", selectors.Length));
 #endif
 
 			return m_handler.GetKeysAsync(selectors, snapshot: false, cancellationToken: m_cancellation);
@@ -689,7 +690,7 @@ namespace FoundationDB.Client
 					case STATE_COMMITTED: throw new InvalidOperationException("Cannot cancel transaction that has already been committed");
 					case STATE_FAILED: throw new InvalidOperationException("Cannot cancel transaction because it is in a failed state");
 					case STATE_DISPOSED: throw new ObjectDisposedException("FdbTransaction", "Cannot cancel transaction because it already has been disposed");
-					default: throw new InvalidOperationException(String.Format("Cannot cancel transaction because it is in unknown state {0}", state.ToString()));
+					default: throw new InvalidOperationException(String.Format("Cannot cancel transaction because it is in unknown state {0}", state));
 				}
 			}
 
@@ -795,7 +796,7 @@ namespace FoundationDB.Client
 				case STATE_FAILED: throw new InvalidOperationException("The transaction is in a failed state and cannot be used anymore");
 				case STATE_COMMITTED: throw new InvalidOperationException("The transaction has already been committed");
 				case STATE_CANCELED: throw new FdbException(FdbError.TransactionCancelled, "The transaction has already been cancelled");
-				default: throw new InvalidOperationException(String.Format("The transaction is unknown state {0}", trans.State.ToString()));
+				default: throw new InvalidOperationException(String.Format("The transaction is unknown state {0}", trans.State));
 			}
 		}
 
@@ -818,7 +819,7 @@ namespace FoundationDB.Client
 					this.Database.UnregisterTransaction(this);
 					m_cts.SafeCancelAndDispose();
 
-					if (Logging.On) Logging.Verbose(this, "Dispose", String.Format("Transaction #{0} has been disposed", m_id.ToString()));
+					if (Logging.On) Logging.Verbose(this, "Dispose", String.Format("Transaction #{0} has been disposed", m_id));
 				}
 				finally
 				{
@@ -828,7 +829,7 @@ namespace FoundationDB.Client
 						try { m_handler.Dispose(); }
 						catch(Exception e)
 						{
-							if (Logging.On) Logging.Error(this, "Dispose", String.Format("Transaction #{0} failed to dispose the transaction handler: {1}", m_id.ToString(), e.Message));
+							if (Logging.On) Logging.Error(this, "Dispose", String.Format("Transaction #{0} failed to dispose the transaction handler: {1}", m_id, e.Message));
 						}
 					}
 					if (!m_context.Shared) m_context.Dispose();

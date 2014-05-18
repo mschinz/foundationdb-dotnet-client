@@ -53,7 +53,7 @@ namespace FoundationDB.Layers.Tuples
 			var encoder = (Encoder<T>)GetSerializerFor(typeof(T));
 			if (encoder == null && required)
 			{
-				encoder = delegate(ref SliceWriter _, T __) { throw new InvalidOperationException(String.Format("Does not know how to serialize values of type {0} into keys", typeof(T).Name)); };
+				encoder = delegate { throw new InvalidOperationException(String.Format("Does not know how to serialize values of type {0} into keys", typeof(T).Name)); };
 			}
 			return encoder;
 		}
@@ -311,7 +311,7 @@ namespace FoundationDB.Layers.Tuples
 
 			if (value)
 			{ // true => 15 01
-				writer.WriteByte2(FdbTupleTypes.IntPos1, (byte)1);
+				writer.WriteByte2(FdbTupleTypes.IntPos1, 1);
 			}
 			else
 			{ // false => 14
@@ -328,7 +328,7 @@ namespace FoundationDB.Layers.Tuples
 			}
 			else if (value.Value)
 			{ // true => 15 01
-				writer.WriteByte2(FdbTupleTypes.IntPos1, (byte)1);
+				writer.WriteByte2(FdbTupleTypes.IntPos1, 1);
 			}
 			else
 			{ // false => 14

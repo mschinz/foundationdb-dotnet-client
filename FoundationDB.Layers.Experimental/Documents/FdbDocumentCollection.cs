@@ -178,7 +178,7 @@ namespace FoundationDB.Layers.Documents
 
 		/// <summary>Delete a document from the collection</summary>
 		/// <param name="trans"></param>
-		/// <param name="id"></param>
+		/// <param name="ids"></param>
 		public void DeleteMultiple(IFdbTransaction trans, IEnumerable<TId> ids)
 		{
 			if (trans == null) throw new ArgumentNullException("trans");
@@ -206,7 +206,7 @@ namespace FoundationDB.Layers.Documents
 
 		/// <summary>Delete a document from the collection</summary>
 		/// <param name="trans"></param>
-		/// <param name="document"></param>
+		/// <param name="documents"></param>
 		public void DeleteMultiple(IFdbTransaction trans, IEnumerable<TDocument> documents)
 		{
 			if (trans == null) throw new ArgumentNullException("trans");
@@ -239,8 +239,7 @@ namespace FoundationDB.Layers.Documents
 			if (ids == null) throw new ArgumentNullException("ids");
 
 			//note: if the source is not already a collection, we have to assume that it is not safe to read it multiple times (it may be a LINQ query or an iterator)
-			var coll = ids as ICollection<TId>;
-			if (coll == null) coll = ids.ToList();
+			var coll = ids as ICollection<TId> ?? ids.ToList();
 
 			return db.ReadAsync((tr) => LoadMultipleAsync(tr, coll), cancellationToken);
 		}
@@ -259,8 +258,7 @@ namespace FoundationDB.Layers.Documents
 			if (ids == null) throw new ArgumentNullException("ids");
 
 			//note: if the source is not already a collection, we have to assume that it is not safe to read it multiple times (it may be a LINQ query or an iterator)
-			var coll = ids as ICollection<TId>;
-			if (coll == null) coll = ids.ToList();
+			var coll = ids as ICollection<TId> ?? ids.ToList();
 
 			return db.WriteAsync((tr) => this.DeleteMultiple(tr, coll), cancellationToken);
 		}

@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -61,9 +61,9 @@ namespace FoundationDB.Layers.Directories
 			throw new InvalidOperationException("Cannot check whether a key belongs to the root of a directory partition.");
 		}
 
-		protected override IFdbTuple ToRelativePath(IEnumerable<string> path)
+		protected override IFdbTuple ToRelativePath(IFdbTuple location)
 		{
-			return path == null ? FdbTuple.Empty : FdbTuple.CreateRange<string>(path);
+			return location ?? FdbTuple.Empty;
 		}
 
 		protected override FdbDirectoryLayer GetLayerForPath(IFdbTuple relativeLocation)
@@ -80,7 +80,7 @@ namespace FoundationDB.Layers.Directories
 
 		public override string ToString()
 		{
-			return String.Format("DirectoryPartition(path={0}, prefix={1})", this.Location.ToString(), this.InternalKey.ToAsciiOrHexaString());
+			return String.Format("DirectoryPartition(path={0}, prefix={1})", this.Location, this.InternalKey.ToAsciiOrHexaString());
 		}
 
 	}

@@ -151,8 +151,9 @@ namespace FoundationDB.Storage.Memory.Utils
 
 		/// <summary>Retourne l'offset de la première différence trouvée entre deux buffers de même taille</summary>
 		/// <param name="left">Pointeur sur le premier buffer (de taille égale à 'count')</param>
+		/// <param name="leftCount">Taille du premier buffer (en octets)</param>
 		/// <param name="right">Pointeur sur le deuxième buffer (de taille égale à 'count')</param>
-		/// <param name="count">Nombre d'éléments à comparer</param>
+		/// <param name="rightCount">Taille du deuxième buffer (en octets)</param>
 		/// <returns>Offset vers le premier élément qui diffère, ou -1 si les deux buffers sont identiques</returns>
 		[SecurityCritical, ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -259,6 +260,46 @@ namespace FoundationDB.Storage.Memory.Utils
 				while (count-- > 0) *ptr++ = filler;
 			}
 #endif
+		}
+
+		public static int ComputeHashCode(ref Slice slice)
+		{
+			if (slice.Array == null) return 0;
+			fixed (byte* ptr = slice.Array)
+			{
+				return ComputeHashCodeUnsafe(checked(ptr + slice.Offset), checked((uint)slice.Count));
+			}
+		}
+
+		public static int ComputeHashCode(ref USlice slice)
+		{
+			if (slice.Data == null) return 0;
+			return ComputeHashCodeUnsafe(slice.Data, slice.Count);
+		}
+
+		/// <summary>Compute the hash code of a byte buffer</summary>
+		/// <param name="bytes">Buffer</param>
+		/// <param name="count">Number of bytes in the buffer</param>
+		/// <returns>A 32-bit signed hash code calculated from all the bytes in the segment.</returns>
+		public static int ComputeHashCodeUnsafe(byte* bytes, uint count)
+		{
+			//note: bytes is allowed to be null only if count == 0
+			Contract.Requires(count == 0 || bytes != null);
+
+			//TODO: use a better hash algorithm? (xxHash, CityHash, SipHash, ...?)
+			// => will be called a lot when Slices are used as keys in an hash-based dictionary (like Dictionary<Slice, ...>)
+			// => won't matter much for *ordered* dictionary that will probably use IComparer<T>.Compare(..) instead of the IEqalityComparer<T>.GetHashCode()/Equals() combo
+			// => we don't need a cryptographic hash, just something fast and suitable for use with hashtables...
+			// => probably best to select an algorithm that works on 32-bit or 64-bit chunks
+
+			// <HACKHACK>: unoptimized 32 bits FNV-1a implementation
+			uint h = 2166136261; // FNV1 32 bits offset basis
+			while (count-- > 0)
+			{
+				h = (h ^ *bytes++) * 16777619; // FNV1 32 prime
+			}
+			return (int)h;
+			// </HACKHACK>
 		}
 
 #if USE_NATIVE_MEMORY_OPERATORS

@@ -412,7 +412,7 @@ namespace FoundationDB.Client
 		{
 			ThrowIfDisposed();
 
-			if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "SetOption", String.Format("Setting database option {0} to {1}", option.ToString(), value.ToString()));
+			if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "SetOption", String.Format("Setting database option {0} to {1}", option.ToString(), value));
 
 			// Spec says: "If the option is documented as taking an Int parameter, value must point to a signed 64-bit integer (little-endian), and value_length must be 8."
 			var data = Slice.FromFixed64(value);
@@ -438,14 +438,7 @@ namespace FoundationDB.Client
 				m_readOnly = readOnly;
 				m_globalSpace = subspace;
 				m_globalSpaceCopy = subspace.Copy();
-				if (directory == null)
-				{
-					m_directory = null;
-				}
-				else
-				{
-					m_directory = new FdbDatabasePartition(this, directory);
-				}
+				m_directory = directory == null ? null : new FdbDatabasePartition(this, directory);
 			}
 		}
 

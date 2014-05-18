@@ -5,9 +5,9 @@
 namespace FoundationDB.Storage.Memory.API.Tests
 {
 	using FoundationDB.Client;
+	using FoundationDB.Layers.Collections;
 	using FoundationDB.Layers.Directories;
 	using FoundationDB.Layers.Indexing;
-	using FoundationDB.Layers.Tables;
 	using FoundationDB.Linq;
 	using FoundationDB.Storage.Memory.Tests;
 	using NUnit.Framework;
@@ -307,6 +307,7 @@ namespace FoundationDB.Storage.Memory.API.Tests
 
 			using (var db = MemoryDatabase.CreateNew("DB"))
 			{
+				db.Debug_Dump();
 
 				using (var tr = db.BeginTransaction(this.Cancellation))
 				{
@@ -679,14 +680,14 @@ namespace FoundationDB.Storage.Memory.API.Tests
 			using (var db = MemoryDatabase.CreateNew("FOO"))
 			{
 
-				var table = new FdbTable<int, string>("Foos", db.GlobalSpace.Partition("Foos"), KeyValueEncoders.Values.StringEncoder);
+				var map = new FdbMap<int, string>("Foos", db.GlobalSpace.Partition("Foos"), KeyValueEncoders.Values.StringEncoder);
 				var index = new FdbIndex<int, string>("Foos.ByColor", db.GlobalSpace.Partition("Foos", "Color"));
 
 				using (var tr = db.BeginTransaction(this.Cancellation))
 				{
-					table.Set(tr, 3, @"{ ""name"": ""Juliet"", ""color"": ""red"" }");
-					table.Set(tr, 2, @"{ ""name"": ""Joey"", ""color"": ""blue"" }");
-					table.Set(tr, 1, @"{ ""name"": ""Bob"", ""color"": ""red"" }");
+					map.Set(tr, 3, @"{ ""name"": ""Juliet"", ""color"": ""red"" }");
+					map.Set(tr, 2, @"{ ""name"": ""Joey"", ""color"": ""blue"" }");
+					map.Set(tr, 1, @"{ ""name"": ""Bob"", ""color"": ""red"" }");
 
 					index.Add(tr, 3, "red");
 					index.Add(tr, 2, "blue");
@@ -697,10 +698,10 @@ namespace FoundationDB.Storage.Memory.API.Tests
 
 				db.Debug_Dump(true);
 
-				// Collect memory
-				Trace.WriteLine("### GARBAGE COLLECT! ###");
-				db.Collect();
-				db.Debug_Dump();
+				//// Collect memory
+				//Trace.WriteLine("### GARBAGE COLLECT! ###");
+				//db.Collect();
+				//db.Debug_Dump();
 			}
 		}
 
@@ -710,25 +711,18 @@ namespace FoundationDB.Storage.Memory.API.Tests
 			using (var db = MemoryDatabase.CreateNew("DB"))
 			{
 
-				var dl = FdbDirectoryLayer.Create();
+				var foos = await db.Directory.CreateOrOpenAsync("Foos", this.Cancellation);
+				var bars = await db.Directory.CreateOrOpenAsync("Bars", this.Cancellation);
 
-				using (var tr = db.BeginTransaction(this.Cancellation))
-				{
-					var foos = await dl.CreateOrOpenAsync(tr, new[] { "Foos" });
-					var bars = await dl.CreateOrOpenAsync(tr, new[] { "Bars" });
+				var foo123 = await db.Directory.CreateOrOpenAsync(new[] { "Foos", "123" }, this.Cancellation);
+				var bar456 = await bars.CreateOrOpenAsync(db, new[] { "123" }, this.Cancellation);
 
-					var foo123 = await dl.CreateOrOpenAsync(tr, new[] { "Foos", "123" });
-					var bar456 = await bars.CreateOrOpenAsync(tr, new[] { "123" });
+				db.Debug_Dump(true);
 
-					await tr.CommitAsync();
-				}
-
-				db.Debug_Dump();
-
-				// Collect memory
-				Trace.WriteLine("### GARBAGE COLLECT! ###");
-				db.Collect();
-				db.Debug_Dump();
+				//// Collect memory
+				//Trace.WriteLine("### GARBAGE COLLECT! ###");
+				//db.Collect();
+				//db.Debug_Dump();
 			}
 		}
 

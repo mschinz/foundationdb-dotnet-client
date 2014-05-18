@@ -45,7 +45,7 @@ namespace FoundationDB.Client
 		private readonly FutureHandle m_handle;
 
 		/// <summary>Lambda used to extract the result of this FDBFuture</summary>
-		private Func<FutureHandle, T> m_resultSelector;
+		private readonly Func<FutureHandle, T> m_resultSelector;
 
 		#endregion
 
@@ -167,7 +167,7 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>Update the Task with the state of a ready Future</summary>
-		/// <param name="future">Future that should be ready</param>
+		/// <param name="fromCallback">If true, we are called from the network thread</param>
 		/// <returns>True if we got a result, or false in case of error (or invalid state)</returns>
 		private void HandleCompletion(bool fromCallback)
 		{

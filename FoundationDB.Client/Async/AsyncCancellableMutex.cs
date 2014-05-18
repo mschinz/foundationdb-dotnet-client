@@ -42,14 +42,14 @@ namespace FoundationDB.Async
 
 		// note: this is not really a mutex because there is no "Reset()" method (not possible to reset a TCS)...
 
-		private static readonly Action<object> s_cancellationCallback = new Action<object>(CancellationHandler);
+		private static readonly Action<object> s_cancellationCallback = CancellationHandler;
 
 		private const int CTR_NONE = 0;
 		private const int CTR_REGISTERED = 1;
 		private const int CTR_CANCELLED_OR_DISPOSED = 2;
 
 		private int m_state;
-		private readonly CancellationTokenRegistration m_ctr;
+		private CancellationTokenRegistration m_ctr;
 
 		/// <summary>Handler called if the CancellationToken linked to a waiter is signaled</summary>
 		/// <param name="state"></param>
@@ -69,15 +69,8 @@ namespace FoundationDB.Async
 		{
 			if (ct.CanBeCanceled)
 			{
-				try
-				{
-					m_state = CTR_REGISTERED;
-					m_ctr = ct.Register(s_cancellationCallback, new WeakReference<AsyncCancelableMutex>(this), useSynchronizationContext: false);
-				}
-				catch
-				{
-					throw;
-				}
+				m_state = CTR_REGISTERED;
+				m_ctr = ct.Register(s_cancellationCallback, new WeakReference<AsyncCancelableMutex>(this), useSynchronizationContext: false);
 			}
 			GC.SuppressFinalize(this);
 		}
@@ -94,7 +87,7 @@ namespace FoundationDB.Async
 
 			if (async)
 			{
-				ThreadPool.QueueUserWorkItem((state) => { ((AsyncCancelableMutex)state).TrySetResult(null); }, this);
+				ThreadPool.QueueUserWorkItem((state) => ((AsyncCancelableMutex)state).TrySetResult(null), this);
 			}
 			else
 			{
@@ -113,7 +106,7 @@ namespace FoundationDB.Async
 
 			if (async)
 			{
-				ThreadPool.QueueUserWorkItem((state) => { ((AsyncCancelableMutex)state).TrySetCanceled(); }, this);
+				ThreadPool.QueueUserWorkItem((state) => ((AsyncCancelableMutex)state).TrySetCanceled(), this);
 			}
 			else
 			{
