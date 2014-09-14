@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,8 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace FoundationDB.Client
 {
-	using FoundationDB.Client.Utils;
 	using FoundationDB.Layers.Tuples;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Linq;
@@ -42,7 +42,7 @@ namespace FoundationDB.Client
 		protected volatile FdbEncoderSubspace<T1> m_head;
 		protected volatile FdbEncoderSubspace<T1, T2> m_partial;
 
-		public FdbEncoderSubspace(FdbSubspace subspace, ICompositeKeyEncoder<T1, T2, T3> encoder)
+		public FdbEncoderSubspace([NotNull] FdbSubspace subspace, [NotNull] ICompositeKeyEncoder<T1, T2, T3> encoder)
 			: base(subspace)
 		{
 			if (subspace == null) throw new ArgumentNullException("subspace");
@@ -51,41 +51,47 @@ namespace FoundationDB.Client
 			m_encoder = encoder;
 		}
 
-		public ICompositeKeyEncoder<T1, T2, T3> Encoder { get { return m_encoder; } }
+		public ICompositeKeyEncoder<T1, T2, T3> Encoder
+		{
+			[NotNull]
+			get { return m_encoder; }
+		}
 
 		public FdbEncoderSubspace<T1> Head
 		{
+			[NotNull]
 			get { return m_head ?? (m_head = new FdbEncoderSubspace<T1>(m_parent, KeyValueEncoders.Head(m_encoder))); }
 		}
 
 		public FdbEncoderSubspace<T1, T2> Partial
 		{
+			[NotNull]
 			get { return m_partial ?? (m_partial = new FdbEncoderSubspace<T1, T2>(m_parent, KeyValueEncoders.Pair(m_encoder))); }
 		}
 
 		#region Transaction Helpers...
 
-		public void Set(IFdbTransaction trans, T1 key1, T2 key2, T3 key3, Slice value)
+		public void Set([NotNull] IFdbTransaction trans, T1 key1, T2 key2, T3 key3, Slice value)
 		{
 			trans.Set(EncodeKey(key1, key2, key3), value);
 		}
 
-		public void Set(IFdbTransaction trans, FdbTuple<T1, T2, T3> key, Slice value)
+		public void Set([NotNull] IFdbTransaction trans, FdbTuple<T1, T2, T3> key, Slice value)
 		{
 			trans.Set(EncodeKey(key), value);
 		}
 
-		public void Clear(IFdbTransaction trans, T1 key1, T2 key2, T3 key3)
+		public void Clear([NotNull] IFdbTransaction trans, T1 key1, T2 key2, T3 key3)
 		{
 			trans.Clear(EncodeKey(key1, key2, key3));
 		}
 
-		public void Clear(IFdbTransaction trans, FdbTuple<T1, T2, T3> key)
+		public void Clear([NotNull] IFdbTransaction trans, FdbTuple<T1, T2, T3> key)
 		{
 			trans.Clear(EncodeKey(key));
 		}
 
-		public Task<Slice> GetAsync(IFdbReadOnlyTransaction trans, T1 key1, T2 key2, T3 key3)
+		public Task<Slice> GetAsync([NotNull] IFdbReadOnlyTransaction trans, T1 key1, T2 key2, T3 key3)
 		{
 			return trans.GetAsync(EncodeKey(key1, key2, key3));
 		}

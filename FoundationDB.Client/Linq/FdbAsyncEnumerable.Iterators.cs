@@ -105,9 +105,9 @@ namespace FoundationDB.Linq
 			return new FdbSelectManyAsyncIterator<TSource, TResult>(source, null, asyncSelector);
 		}
 
-		internal static SelectManyAsyncIterator<TSource, TCollection, TResult> Flatten<TSource, TCollection, TResult>(IFdbAsyncEnumerable<TSource> source, Func<TSource, IEnumerable<TCollection>> collectionSelector, Func<TSource, TCollection, TResult> resultSelector)
+		internal static FdbSelectManyAsyncIterator<TSource, TCollection, TResult> Flatten<TSource, TCollection, TResult>(IFdbAsyncEnumerable<TSource> source, Func<TSource, IEnumerable<TCollection>> collectionSelector, Func<TSource, TCollection, TResult> resultSelector)
 		{
-			return new SelectManyAsyncIterator<TSource, TCollection, TResult>(
+			return new FdbSelectManyAsyncIterator<TSource, TCollection, TResult>(
 				source,
 				collectionSelector,
 				null,
@@ -115,9 +115,9 @@ namespace FoundationDB.Linq
 			);
 		}
 
-		internal static SelectManyAsyncIterator<TSource, TCollection, TResult> Flatten<TSource, TCollection, TResult>(IFdbAsyncEnumerable<TSource> source, Func<TSource, CancellationToken, Task<IEnumerable<TCollection>>> asyncCollectionSelector, Func<TSource, TCollection, TResult> resultSelector)
+		internal static FdbSelectManyAsyncIterator<TSource, TCollection, TResult> Flatten<TSource, TCollection, TResult>(IFdbAsyncEnumerable<TSource> source, Func<TSource, CancellationToken, Task<IEnumerable<TCollection>>> asyncCollectionSelector, Func<TSource, TCollection, TResult> resultSelector)
 		{
-			return new SelectManyAsyncIterator<TSource, TCollection, TResult>(
+			return new FdbSelectManyAsyncIterator<TSource, TCollection, TResult>(
 				source,
 				null,
 				asyncCollectionSelector,
@@ -129,13 +129,13 @@ namespace FoundationDB.Linq
 
 		#region Map...
 
-		internal static FdbWhereSelectAsyncIterator<TSource, TResult> Map<TSource, TResult>(IFdbAsyncEnumerable<TSource> source, Func<TSource, TResult> selector, int? limit = null)
+		internal static FdbWhereSelectAsyncIterator<TSource, TResult> Map<TSource, TResult>(IFdbAsyncEnumerable<TSource> source, Func<TSource, TResult> selector, int? limit = null, int? offset = null)
 		{
-			return new FdbWhereSelectAsyncIterator<TSource, TResult>(source, filter: null, asyncFilter: null, transform: selector, asyncTransform: null, limit: limit);
+			return new FdbWhereSelectAsyncIterator<TSource, TResult>(source, filter: null, asyncFilter: null, transform: selector, asyncTransform: null, limit: limit, offset: offset);
 		}
-		internal static FdbWhereSelectAsyncIterator<TSource, TResult> Map<TSource, TResult>(IFdbAsyncEnumerable<TSource> source, Func<TSource, CancellationToken, Task<TResult>> asyncSelector, int? limit = null)
+		internal static FdbWhereSelectAsyncIterator<TSource, TResult> Map<TSource, TResult>(IFdbAsyncEnumerable<TSource> source, Func<TSource, CancellationToken, Task<TResult>> asyncSelector, int? limit = null, int? offset = null)
 		{
-			return new FdbWhereSelectAsyncIterator<TSource, TResult>(source, filter: null, asyncFilter: null, transform: null, asyncTransform: asyncSelector, limit: limit);
+			return new FdbWhereSelectAsyncIterator<TSource, TResult>(source, filter: null, asyncFilter: null, transform: null, asyncTransform: asyncSelector, limit: limit, offset: offset);
 		}
 
 		#endregion
@@ -154,11 +154,20 @@ namespace FoundationDB.Linq
 
 		#endregion
 
+		#region Offset...
+
+		internal static FdbWhereSelectAsyncIterator<TResult, TResult> Offset<TResult>(IFdbAsyncEnumerable<TResult> source, int offset)
+		{
+			return new FdbWhereSelectAsyncIterator<TResult, TResult>(source, filter: null, asyncFilter: null, transform: TaskHelpers.Cache<TResult>.Identity, asyncTransform: null, limit: null, offset: offset);
+		}
+
+		#endregion
+
 		#region Limit...
 
 		internal static FdbWhereSelectAsyncIterator<TResult, TResult> Limit<TResult>(IFdbAsyncEnumerable<TResult> source, int limit)
 		{
-			return new FdbWhereSelectAsyncIterator<TResult, TResult>(source, filter: null, asyncFilter: null, transform: TaskHelpers.Cache<TResult>.Identity, asyncTransform: null, limit: limit);
+			return new FdbWhereSelectAsyncIterator<TResult, TResult>(source, filter: null, asyncFilter: null, transform: TaskHelpers.Cache<TResult>.Identity, asyncTransform: null, limit: limit, offset: null);
 		}
 
 		internal static FdbTakeWhileAsyncIterator<TResult> Limit<TResult>(IFdbAsyncEnumerable<TResult> source, Func<TResult, bool> condition)
@@ -259,30 +268,34 @@ namespace FoundationDB.Linq
 
 			public List<T> ToList()
 			{
-				if (this.Count == 0)
+				int count = this.Count;
+				if (count == 0)
 				{ // empty sequence
 					return new List<T>();
 				}
 
-				int count = this.Count;
 				var list = new List<T>(count);
 				if (count > 0)
 				{
-					for (int i = 0; i < this.Chunks.Length - 1; i++)
+					var chunks = this.Chunks;
+					for (int i = 0; i < chunks.Length - 1; i++)
 					{
-						list.AddRange(this.Chunks[i]);
-						count -= this.Chunks[i].Length;
+						list.AddRange(chunks[i]);
+						count -= chunks[i].Length;
 					}
 
-					if (count == this.Current.Length)
+					var current = this.Current;
+					if (count == current.Length)
 					{ // the last chunk fits perfectly
-						list.AddRange(this.Current);
+						list.AddRange(current);
 					}
 					else
-					{ // there is not AddRange(buffer, offset, count) on List<T>, so we copy to a tmp array and AddRange
-						var tmp = new T[count];
-						Array.Copy(this.Current, tmp, count);
-						list.AddRange(tmp);
+					{ // there is no List<T>.AddRange(buffer, offset, count), and copying in a tmp buffer would waste the memory we tried to save with the buffer
+						// also, for most of the small queries, like FirstOrDefault()/SingleOrDefault(), count will be 1 (or very small) so calling Add(T) will still be optimum
+						for (int i = 0; i < count; i++)
+						{
+							list.Add(current[i]);
+						}
 					}
 				}
 

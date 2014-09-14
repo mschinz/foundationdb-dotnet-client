@@ -28,11 +28,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace FoundationDB.Client
 {
-	using FoundationDB.Async;
 	using FoundationDB.Client.Core;
 	using FoundationDB.Client.Native;
 	using FoundationDB.Client.Utils;
-	using FoundationDB.Layers.Tuples;
+	using JetBrains.Annotations;
 	using System;
 	using System.Diagnostics;
 	using System.Threading;
@@ -51,6 +50,7 @@ namespace FoundationDB.Client
 		/// <summary>Set to true when the current db instance gets disposed.</summary>
 		private volatile bool m_disposed;
 
+		/// <summary>Wraps a cluster handle</summary>
 		public FdbCluster(IFdbClusterHandler handler, string path)
 		{
 			if (handler == null) throw new ArgumentNullException("handler");
@@ -60,9 +60,16 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>Path to the cluster file used by this connection, or null if the default cluster file is being used</summary>
-		public string Path { get { return m_path; } }
+		public string Path
+		{
+			get { return m_path; }
+		}
 
-		internal IFdbClusterHandler Handler { get { return m_handler; } }
+		internal IFdbClusterHandler Handler
+		{
+			[NotNull]
+			get { return m_handler; }
+		}
 
 		private void ThrowIfDisposed()
 		{
@@ -180,11 +187,6 @@ namespace FoundationDB.Client
 			var data = Slice.FromFixed64(value);
 			m_handler.SetOption(option, data);
 		}
-
-	}
-
-	public static class FdbClusterExtensions
-	{
 
 	}
 

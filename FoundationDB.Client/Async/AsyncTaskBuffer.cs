@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -26,9 +26,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #endregion
 
+//#define FULL_DEBUG
+
 namespace FoundationDB.Async
 {
 	using FoundationDB.Client.Utils;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Runtime.ExceptionServices;
@@ -50,7 +53,7 @@ namespace FoundationDB.Async
 		protected LinkedList<Task<T>> m_queue = new LinkedList<Task<T>>();
 
 		/// <summary>Only used in mode CompletionOrder</summary>
-		private AsyncCancelableMutex m_completionLock;
+		private AsyncCancelableMutex m_completionLock = AsyncCancelableMutex.AlreadyDone;
 
 		#endregion
 
@@ -110,15 +113,16 @@ namespace FoundationDB.Async
 
 		private void NotifyConsumerOfTaskCompletion_NeedsLocking()
 		{
-			if (!m_receivedLast && IsConsumerAwaitingCompletion)
+			Contract.Requires(m_mode == AsyncOrderingMode.CompletionOrder);
+
+			if (!m_receivedLast && m_completionLock.Set(async: true))
 			{
-				LogProducer("Waking up blocked consumer because one task completed");
-				m_completionLock.Set(async: true);
+				LogProducer("Woke up blocked consumer because one task completed");
 			}
 		}
 
 		/// <summary>Observe the completion of a task to wake up the consumer</summary>
-		private void ObserveTaskCompletion(Task<T> task)
+		private void ObserveTaskCompletion([NotNull] Task<T> task)
 		{
 			var _ = task.ContinueWith(
 				(t, state) =>
@@ -145,7 +149,7 @@ namespace FoundationDB.Async
 					m_done = true;
 					m_queue.AddLast(new LinkedListNode<Task<T>>(null));
 					WakeUpBlockedConsumer_NeedsLocking();
-					if (IsConsumerAwaitingCompletion) m_completionLock.Set(async: true);
+					if (m_mode == AsyncOrderingMode.CompletionOrder) NotifyConsumerOfTaskCompletion_NeedsLocking();
 				}
 			}
 		}
@@ -159,7 +163,7 @@ namespace FoundationDB.Async
 					LogProducer("Error received: " + error.SourceException.Message);
 					m_queue.AddLast(new LinkedListNode<Task<T>>(TaskHelpers.FromException<T>(error.SourceException)));
 					WakeUpBlockedConsumer_NeedsLocking();
-					if (IsConsumerAwaitingCompletion) m_completionLock.Set(async: true);
+					if (m_mode == AsyncOrderingMode.CompletionOrder) NotifyConsumerOfTaskCompletion_NeedsLocking();
 				}
 			}
 		}
@@ -170,7 +174,7 @@ namespace FoundationDB.Async
 			WakeUpBlockedConsumer_NeedsLocking();
 		}
 
-		private async Task WaitForNextFreeSlotThenEnqueueAsync(Task<T> task, Task wait, CancellationToken ct)
+		private async Task WaitForNextFreeSlotThenEnqueueAsync(Task<T> task, [NotNull] Task wait, CancellationToken ct)
 		{
 			await wait.ConfigureAwait(false);
 
@@ -197,7 +201,7 @@ namespace FoundationDB.Async
 			// in completion order mode, we look at the first completed task in the queue
 			// we have to take special care of the "done" message that needs to be returned last !
 
-			Task wait = null;
+			Task wait;
 			lock (m_lock)
 			{
 				if (m_receivedLast)
@@ -270,7 +274,7 @@ namespace FoundationDB.Async
 			return Task.FromResult(item);
 		}
 
-		private async Task<Maybe<T>> WaitForTaskToCompleteAsync(Task<T> task, CancellationToken ct)
+		private async Task<Maybe<T>> WaitForTaskToCompleteAsync([NotNull] Task<T> task, CancellationToken ct)
 		{
 			// we just need to wait for this task to complete, and return it
 
@@ -296,25 +300,23 @@ namespace FoundationDB.Async
 			}
 		}
 
-		private async Task<Maybe<T>> WaitForCompletionOrNextItemAsync(Task wait, CancellationToken ct)
+		private async Task<Maybe<T>> WaitForCompletionOrNextItemAsync([NotNull] Task wait, CancellationToken ct)
 		{
 			// we wait for any activity (new task or one that completes)
 
 			await wait.ConfigureAwait(false);
 
 			// recursive call, but should be ok since we are (almost) sure to have a completed task in the queue
-			return await ReceiveAsync(ct);
-		}
-
-		protected bool IsConsumerAwaitingCompletion
-		{
-			get { return m_completionLock != null && !m_completionLock.Task.IsCompleted; }
+			return await ReceiveAsync(ct).ConfigureAwait(false);
 		}
 
 		protected Task MarkConsumerAsAwaitingCompletion_NeedsLocking(CancellationToken ct)
 		{
-			if (!IsConsumerAwaitingCompletion)
+			Contract.Requires(m_mode == AsyncOrderingMode.CompletionOrder);
+
+			if (m_completionLock.IsCompleted)
 			{
+				LogConsumer("Creating new task completion lock");
 				m_completionLock = new AsyncCancelableMutex(ct);
 			}
 			LogConsumer("marked as waiting for task completion");
@@ -332,9 +334,9 @@ namespace FoundationDB.Async
 				lock (m_lock)
 				{
 					m_done = true;
-					if (m_producerLock != null) m_producerLock.Abort();
-					if (m_consumerLock != null) m_consumerLock.Abort();
-					if (m_completionLock != null) m_completionLock.Abort();
+					m_producerLock.Abort();
+					m_consumerLock.Abort();
+					m_completionLock.Abort();
 					m_queue.Clear();
 				}
 			}

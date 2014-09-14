@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,9 +30,13 @@ namespace FoundationDB.Client.Native
 {
 	using FoundationDB.Client.Utils;
 	using System;
+	using System.Runtime.InteropServices;
 	using System.Threading;
 
 	/// <summary>Wrapper on a FDBFuture*</summary>
+#if MONO
+	[StructLayout(LayoutKind.Sequential)]
+#endif
 	internal sealed class FutureHandle : FdbSafeHandle
 	{
 

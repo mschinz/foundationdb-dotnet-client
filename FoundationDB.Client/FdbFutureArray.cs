@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace FoundationDB.Client
 {
 	using FoundationDB.Client.Native;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Diagnostics;
@@ -55,7 +56,7 @@ namespace FoundationDB.Client
 
 		#region Constructors...
 
-		internal FdbFutureArray(FutureHandle[] handles, Func<FutureHandle, T> selector, CancellationToken cancellationToken)
+		internal FdbFutureArray([NotNull] FutureHandle[] handles, [NotNull] Func<FutureHandle, T> selector, CancellationToken cancellationToken)
 		{
 			if (handles == null) throw new ArgumentNullException("handles");
 			if (handles.Length == 0) throw new ArgumentException("Handle array cannot be empty", "handles");
@@ -198,7 +199,7 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>Cached delegate of the future completion callback handler</summary>
-		private static readonly FdbNative.FdbFutureCallback CallbackHandler = new FdbNative.FdbFutureCallback(FutureCompletionCallback);
+		private static readonly FdbNative.FdbFutureCallback CallbackHandler = FutureCompletionCallback;
 
 		/// <summary>Handler called when a FDBFuture becomes ready</summary>
 		/// <param name="futureHandle">Handle on the future that became ready</param>

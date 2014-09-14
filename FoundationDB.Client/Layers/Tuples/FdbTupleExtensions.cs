@@ -29,12 +29,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace FoundationDB.Layers.Tuples
 {
 	using FoundationDB.Client;
-	using FoundationDB.Client.Utils;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
-	using System.Linq;
-	using System.Threading;
-	using System.Threading.Tasks;
 
 	/// <summary>Add extensions methods that deal with tuples on various types</summary>
 	public static class FdbTupleExtensions
@@ -54,6 +51,7 @@ namespace FoundationDB.Layers.Tuples
 		}
 
 		/// <summary>Returns an array containing all the objects of a tuple</summary>
+		[NotNull]
 		public static object[] ToArray(this IFdbTuple tuple)
 		{
 			if (tuple == null) throw new ArgumentNullException("tuple");
@@ -67,6 +65,7 @@ namespace FoundationDB.Layers.Tuples
 		}
 
 		/// <summary>Returns a typed array containing all the items of a tuple</summary>
+		[NotNull]
 		public static T[] ToArray<T>(this IFdbTuple tuple)
 		{
 			if (tuple == null) throw new ArgumentNullException("tuple");
@@ -83,12 +82,14 @@ namespace FoundationDB.Layers.Tuples
 		}
 
 		/// <summary>Returns a byte array containing the packed version of a tuple</summary>
+		[CanBeNull]
 		public static byte[] GetBytes(this IFdbTuple tuple)
 		{
 			return tuple.ToSlice().GetBytes();
 		}
 
 		/// <summary>Concatenates two tuples together</summary>
+		[NotNull]
 		public static IFdbTuple Concat(this IFdbTuple head, IFdbTuple tail)
 		{
 			if (head == null) throw new ArgumentNullException("head");
@@ -104,6 +105,7 @@ namespace FoundationDB.Layers.Tuples
 		}
 
 		/// <summary>Appends two values at the end of a tuple</summary>
+		[NotNull]
 		public static IFdbTuple Append<T1, T2>(this IFdbTuple tuple, T1 value1, T2 value2)
 		{
 			if (tuple == null) throw new ArgumentNullException("tuple");
@@ -111,6 +113,7 @@ namespace FoundationDB.Layers.Tuples
 		}
 
 		/// <summary>Appends three values at the end of a tuple</summary>
+		[NotNull]
 		public static IFdbTuple Append<T1, T2, T3>(this IFdbTuple tuple, T1 value1, T2 value2, T3 value3)
 		{
 			if (tuple == null) throw new ArgumentNullException("tuple");
@@ -118,6 +121,7 @@ namespace FoundationDB.Layers.Tuples
 		}
 
 		/// <summary>Appends four values at the end of a tuple</summary>
+		[NotNull]
 		public static IFdbTuple Append<T1, T2, T3, T4>(this IFdbTuple tuple, T1 value1, T2 value2, T3 value3, T4 value4)
 		{
 			if (tuple == null) throw new ArgumentNullException("tuple");
@@ -164,6 +168,7 @@ namespace FoundationDB.Layers.Tuples
 		/// <param name="tuple"></param>
 		/// <returns>Create a copy of the tuple that can be reused frequently to pack values</returns>
 		/// <remarks>If the tuple is already memoized, the current instance will be returned</remarks>
+		[CanBeNull]
 		public static FdbMemoizedTuple Memoize(this IFdbTuple tuple)
 		{
 			if (tuple == null) return null;
@@ -176,6 +181,7 @@ namespace FoundationDB.Layers.Tuples
 		/// <summary>Unpack a tuple from this slice</summary>
 		/// <param name="slice"></param>
 		/// <returns>Unpacked tuple if the slice contains data, FdbTuple.Empty if the slice is empty, or null if the slice is Slice.Nil</returns>
+		[CanBeNull]
 		public static IFdbTuple ToTuple(this Slice slice)
 		{
 			if (slice.IsNullOrEmpty)
@@ -190,6 +196,7 @@ namespace FoundationDB.Layers.Tuples
 		/// <param name="tuple">Current tuple</param>
 		/// <param name="offset">Offset from the start of the current tuple (negative value means from the end)</param>
 		/// <returns>Tuple that contains only the items past the first <param name="offset"/> items of the current tuple</returns>
+		[NotNull]
 		public static IFdbTuple Substring(this IFdbTuple tuple, int offset)
 		{
 			if (tuple == null) throw new ArgumentNullException("tuple");
@@ -202,6 +209,7 @@ namespace FoundationDB.Layers.Tuples
 		/// <param name="offset">Offset from the start of the current tuple (negative value means from the end)</param>
 		/// <param name="count">Number of items to keep</param>
 		/// <returns>Tuple that contains only the selected items from the current tuple</returns>
+		[NotNull]
 		public static IFdbTuple Substring(this IFdbTuple tuple, int offset, int count)
 		{
 			if (tuple == null) throw new ArgumentNullException("tuple");
@@ -238,6 +246,22 @@ namespace FoundationDB.Layers.Tuples
 			return FdbTuple.EndsWith(left, right);
 		}
 
+		/// <summary>Transform a tuple of N elements into a list of N singletons</summary>
+		/// <param name="tuple">Tuple that contains any number of elements</param>
+		/// <returns>Sequence of tuples that contains a single element</returns>
+		/// <example>(123, ABC, false,).Explode() => [ (123,), (ABC,), (false,) ]</example>
+		public static IEnumerable<IFdbTuple> Explode(this IFdbTuple tuple)
+		{
+			if (tuple == null) throw new ArgumentNullException("tuple");
+
+			int p = 0;
+			int n = tuple.Count;
+			while (p < n)
+			{
+				yield return tuple[p, p + 1];
+			}
+		}
+
 		/// <summary>Returns a key that is immediately after the packed representation of this tuple</summary>
 		/// <remarks>This is the equivalent of manually packing the tuple and incrementing the resulting slice</remarks>
 		public static Slice Increment(this IFdbTuple tuple)
@@ -252,161 +276,6 @@ namespace FoundationDB.Layers.Tuples
 
 			return FdbKeySelectorPair.StartsWith(tuple.ToSlice());
 		}
-
-		#endregion
-
-		#region FdbTransaction extensions...
-
-		//NOTE: most of these are now obsolete, since IFdbTuple implements IFdbKey !
-
-#if REFACTORED
-
-		/// <summary>Returns the value of a particular key</summary>
-		/// <param name="key">Key to retrieve</param>
-		/// <returns>Task that will return the value of the key if it is found, null if the key does not exist, or an exception</returns>
-		/// <exception cref="System.ArgumentException">If the key is null or empty</exception>
-		/// <exception cref="System.OperationCanceledException">If the cancellation token is already triggered</exception>
-		/// <exception cref="System.ObjectDisposedException">If the transaction has already been completed</exception>
-		/// <exception cref="System.InvalidOperationException">If the operation method is called from the Network Thread</exception>
-		public static Task<Slice> GetAsync(this IFdbReadOnlyTransaction trans, IFdbTuple key)
-		{
-			Contract.Requires(trans != null);
-			if (key == null) throw new ArgumentNullException("key");
-
-			return trans.GetAsync(key.ToSlice());
-		}
-
-		public static Task<Slice[]> GetValuesAsync(this IFdbReadOnlyTransaction trans, IFdbTuple[] tuples)
-		{
-			if (trans == null) throw new ArgumentNullException("trans");
-			if (tuples == null) throw new ArgumentNullException("tuples");
-
-			return trans.GetValuesAsync(FdbTuple.PackRange(tuples));
-		}
-
-		public static Task<Slice[]> GetValuesAsync(this IFdbReadOnlyTransaction trans, IEnumerable<IFdbTuple> tuples)
-		{
-			if (trans == null) throw new ArgumentNullException("trans");
-			if (tuples == null) throw new ArgumentNullException("tuples");
-
-			return trans.GetValuesAsync(FdbTuple.PackRange(tuples));
-		}
-
-		public static Task<List<KeyValuePair<IFdbTuple, Slice>>> GetBatchAsync(this IFdbReadOnlyTransaction trans, IEnumerable<IFdbTuple> tuples)
-		{
-			if (trans == null) throw new ArgumentNullException("trans");
-			if (tuples == null) throw new ArgumentNullException("tuples");
-
-			return GetBatchAsync(trans, tuples.ToArray());
-		}
-
-		public static async Task<List<KeyValuePair<IFdbTuple, Slice>>> GetBatchAsync(this IFdbReadOnlyTransaction trans, IFdbTuple[] tuples)
-		{
-			var results = await GetValuesAsync(trans, tuples).ConfigureAwait(false);
-
-			// maps the index back to the original key
-			return results
-				.Select((value, i) => new KeyValuePair<IFdbTuple, Slice>(tuples[i], value))
-				.ToList();
-		}
-
-		public static FdbRangeQuery<KeyValuePair<Slice, Slice>> GetRange(this IFdbReadOnlyTransaction trans, IFdbTuple beginInclusive, IFdbTuple endExclusive, FdbRangeOptions options = null)
-		{
-			Contract.Requires(trans != null);
-
-			var begin = beginInclusive != null ? beginInclusive.ToSlice() : FdbKey.MinValue;
-			var end = endExclusive != null ? endExclusive.ToSlice() : FdbKey.MaxValue;
-
-			return trans.GetRange(begin, end, options);
-		}
-
-		public static FdbRangeQuery<KeyValuePair<Slice, Slice>> GetRange(this IFdbReadOnlyTransaction trans, IFdbTuple beginInclusive, IFdbTuple endExclusive, int limit, bool reverse = false)
-		{
-			var begin = beginInclusive != null ? beginInclusive.ToSlice() : FdbKey.MinValue;
-			var end = endExclusive != null ? endExclusive.ToSlice() : FdbKey.MaxValue;
-
-			return trans.GetRange(begin, end, new FdbRangeOptions(limit: limit, reverse: reverse));
-		}
-
-		public static void Set(this IFdbTransaction trans, IFdbTuple key, Slice value)
-		{
-			Contract.Requires(trans != null);
-			if (key == null) throw new ArgumentNullException("key");
-
-			trans.Set(key.ToSlice(), value);
-		}
-
-		public static void Clear(this IFdbTransaction trans, IFdbTuple key)
-		{
-			Contract.Requires(trans != null);
-			if (key == null) throw new ArgumentNullException("key");
-
-			trans.Clear(key.ToSlice());
-		}
-
-		public static void ClearRange(this IFdbTransaction trans, IFdbTuple beginInclusive, IFdbTuple endExclusive)
-		{
-			Contract.Requires(trans != null);
-			if (beginInclusive == null) throw new ArgumentNullException("beginInclusive");
-			if (endExclusive == null) throw new ArgumentNullException("endExclusive");
-
-			trans.ClearRange(beginInclusive.ToSlice(), endExclusive.ToSlice());
-		}
-
-		public static void ClearRange(this IFdbTransaction trans, IFdbTuple prefix)
-		{
-			Contract.Requires(trans != null);
-			if (prefix == null) throw new ArgumentNullException("prefix");
-
-			var range = prefix.ToRange();
-			trans.ClearRange(range.Begin, range.End);
-		}
-
-		/// <summary>
-		/// Adds a tuple prefix to the transaction’s read conflict ranges as if you had read the key. As a result, other transactions that write to any key contained in this tuple prefix could cause the transaction to fail with a conflict.
-		/// </summary>
-		public static void AddReadConflictRange(this IFdbTransaction trans, IFdbTuple prefix)
-		{
-			if (trans == null) throw new ArgumentNullException("trans");
-			if (prefix == null) throw new ArgumentNullException("prefix");
-
-			trans.AddConflictRange(prefix.ToRange(), FdbConflictRangeType.Read);
-		}
-
-		/// <summary>
-		/// Adds a tuple to the transaction’s read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.
-		/// </summary>
-		public static void AddReadConflictKey(this IFdbTransaction trans, IFdbTuple tuple)
-		{
-			if (trans == null) throw new ArgumentNullException("trans");
-			if (tuple == null) throw new ArgumentNullException("tuple");
-
-			trans.AddConflictRange(FdbKeyRange.FromKey(tuple.ToSlice()), FdbConflictRangeType.Read);
-		}
-
-		/// <summary>
-		/// Adds a tuple prefix to the transaction’s write conflict ranges as if you had cleared the range. As a result, other transactions that concurrently read any key contained in this tuple prefix could fail with a conflict.
-		/// </summary>
-		public static void AddWriteConflictRange(this IFdbTransaction trans, IFdbTuple prefix)
-		{
-			if (trans == null) throw new ArgumentNullException("trans");
-			if (prefix == null) throw new ArgumentNullException("prefix");
-
-			trans.AddConflictRange(prefix.ToRange(), FdbConflictRangeType.Write);
-		}
-
-		/// <summary>
-		/// Adds a tuple to the transaction’s write conflict ranges as if you had cleared the key. As a result, other transactions that concurrently read this key could fail with a conflict.
-		/// </summary>
-		public static void AddWriteConflictKey(this IFdbTransaction trans, IFdbTuple tuple)
-		{
-			if (trans == null) throw new ArgumentNullException("trans");
-			if (tuple == null) throw new ArgumentNullException("tuple");
-
-			trans.AddConflictRange(FdbKeyRange.FromKey(tuple.ToSlice()), FdbConflictRangeType.Write);
-		}
-
-#endif
 
 		#endregion
 

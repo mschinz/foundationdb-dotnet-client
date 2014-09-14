@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace FoundationDB.Client.Utils
 {
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Diagnostics;
@@ -53,7 +54,7 @@ namespace FoundationDB.Client.Utils
 		private int m_remaining;
 		/// <summary>If non null, list of previously used buffers (excluding the current buffer)</summary>
 		private List<Slice> m_chunks;
-		/// <summary>Running total of the length of of all previously used buffers, exluding the size of the current buffer</summary>
+		/// <summary>Running total of the length of of all previously used buffers, excluding the size of the current buffer</summary>
 		private int m_allocated;
 		/// <summary>Running total of the number of bytes stored in the previously used buffers, excluding the size of the current buffer</summary>
 		private int m_used;
@@ -90,7 +91,8 @@ namespace FoundationDB.Client.Utils
 		}
 
 		/// <summary>Return the list of all the pages used by this buffer</summary>
-		/// <returns></returns>
+		/// <returns>Array of pages used by the buffer</returns>
+		[NotNull]
 		public Slice[] GetPages()
 		{
 			var pages = new Slice[this.PageCount];

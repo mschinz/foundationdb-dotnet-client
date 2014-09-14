@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -33,9 +33,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace FoundationDB.Client.Native
 {
-	using FoundationDB.Async;
 	using FoundationDB.Client.Core;
 	using FoundationDB.Client.Utils;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Diagnostics;
@@ -177,7 +177,7 @@ namespace FoundationDB.Client.Native
 		{
 			Contract.Requires(keys != null);
 
-			if (keys.Length == 0) return Task.FromResult(new Slice[0]);
+			if (keys.Length == 0) return Task.FromResult(Slice.EmptySliceArray);
 
 			var futures = new FutureHandle[keys.Length];
 			try
@@ -202,12 +202,15 @@ namespace FoundationDB.Client.Native
 		/// <summary>Extract a chunk of result from a completed Future</summary>
 		/// <param name="h">Handle to the completed Future</param>
 		/// <param name="more">Receives true if there are more result, or false if all results have been transmited</param>
-		/// <returns></returns>
+		/// <returns>Array of key/value pairs, or an exception</returns>
+		[NotNull]
 		private static KeyValuePair<Slice, Slice>[] GetKeyValueArrayResult(FutureHandle h, out bool more)
 		{
 			KeyValuePair<Slice, Slice>[] result;
 			var err = FdbNative.FutureGetKeyValueArray(h, out result, out more);
 			Fdb.DieOnError(err);
+			//note: result can only be null if an error occured!
+			Contract.Ensures(result != null);
 			return result;
 		}
 
@@ -217,8 +220,8 @@ namespace FoundationDB.Client.Native
 		{
 			Contract.Requires(options != null);
 
-			bool reversed = options.Reverse.Value;
-			var future = FdbNative.TransactionGetRange(m_handle, begin, end, options.Limit.Value, options.TargetBytes.Value, options.Mode.Value, iteration, snapshot, reversed);
+			bool reversed = options.Reverse ?? false;
+			var future = FdbNative.TransactionGetRange(m_handle, begin, end, options.Limit ?? 0, options.TargetBytes ?? 0, options.Mode ?? FdbStreamingMode.Iterator, iteration, snapshot, reversed);
 			return FdbFuture.CreateTaskFromHandle(
 				future,
 				(h) =>
@@ -324,6 +327,7 @@ namespace FoundationDB.Client.Native
 			Fdb.DieOnError(err);
 		}
 
+		[NotNull]
 		private static string[] GetStringArrayResult(FutureHandle h)
 		{
 			Contract.Requires(h != null);
@@ -334,6 +338,7 @@ namespace FoundationDB.Client.Native
 			Debug.WriteLine("FdbTransaction[].FutureGetStringArray() => err=" + err + ", results=" + (result == null ? "<null>" : result.Length.ToString()));
 #endif
 			Fdb.DieOnError(err);
+			Contract.Ensures(result != null); // can only be null in case of an errror
 			return result;
 		}
 

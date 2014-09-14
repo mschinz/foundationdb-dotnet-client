@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,11 +28,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace FoundationDB.Client
 {
-	using FoundationDB.Client.Native;
 	using FoundationDB.Client.Utils;
 	using FoundationDB.Layers.Directories;
-	using FoundationDB.Layers.Tuples;
 	using FoundationDB.Linq;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Diagnostics;
@@ -51,7 +50,7 @@ namespace FoundationDB.Client
 			/// <param name="path">Path of the named partition to open</param>
 			/// <param name="cancellationToken">Token used to cancel this operation</param>
 			/// <returns>Returns a new database instance that will only be able to read and write inside the specified partition. If the partition does not exist, it will be automatically created</returns>
-			public static Task<IFdbDatabase> OpenNamedPartitionAsync(IEnumerable<string> path, CancellationToken cancellationToken)
+			public static Task<IFdbDatabase> OpenNamedPartitionAsync([NotNull] IEnumerable<string> path, CancellationToken cancellationToken)
 			{
 				return OpenNamedPartitionAsync(clusterFile: null, dbName: null, path: path, readOnly: false, cancellationToken: cancellationToken);
 			}
@@ -63,7 +62,7 @@ namespace FoundationDB.Client
 			/// <param name="readOnly">If true, the database instance will only allow read operations</param>
 			/// <param name="cancellationToken">Token used to cancel this operation</param>
 			/// <returns>Returns a new database instance that will only be able to read and write inside the specified partition. If the partition does not exist, it will be automatically created</returns>
-			public static async Task<IFdbDatabase> OpenNamedPartitionAsync(string clusterFile, string dbName, IEnumerable<string> path, bool readOnly, CancellationToken cancellationToken)
+			public static async Task<IFdbDatabase> OpenNamedPartitionAsync(string clusterFile, string dbName, [NotNull] IEnumerable<string> path, bool readOnly, CancellationToken cancellationToken)
 			{
 				if (path == null) throw new ArgumentNullException("path");
 				var partitionPath = path.ToList();
@@ -81,7 +80,7 @@ namespace FoundationDB.Client
 					if (Logging.On) Logging.Verbose(typeof(Fdb.Directory), "OpenNamedPartitionAsync", String.Format("Opened root layer of database {0} using cluster file '{1}'", db.Name, db.Cluster.Path));
 
 					// look up in the root layer for the named partition
-					var descriptor = await rootLayer.CreateOrOpenAsync(db, partitionPath, layer: FdbDirectoryPartition.PartitionLayerId, cancellationToken: cancellationToken).ConfigureAwait(false);
+					var descriptor = await rootLayer.CreateOrOpenAsync(db, partitionPath, layer: FdbDirectoryPartition.LayerId, cancellationToken: cancellationToken).ConfigureAwait(false);
 					if (Logging.On) Logging.Verbose(typeof(Fdb.Directory), "OpenNamedPartitionAsync", String.Format("Found named partition '{0}' at prefix {1}", descriptor.FullName, descriptor));
 
 					// we have to chroot the database to the new prefix, and create a new DirectoryLayer with a new '/'
@@ -106,7 +105,7 @@ namespace FoundationDB.Client
 			/// <param name="parent">Parent directory</param>
 			/// <param name="cancellationToken">Token used to cancel this operation</param>
 			/// <returns>Dictionary of all the sub directories of the <paramref name="parent"/> directory.</returns>
-			public static async Task<Dictionary<string, FdbDirectorySubspace>> BrowseAsync(IFdbDatabase db, IFdbDirectory parent, CancellationToken cancellationToken)
+			public static async Task<Dictionary<string, FdbDirectorySubspace>> BrowseAsync([NotNull] IFdbDatabase db, [NotNull] IFdbDirectory parent, CancellationToken cancellationToken)
 			{
 				if (db == null) throw new ArgumentNullException("db");
 				if (parent == null) throw new ArgumentNullException("parent");

@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace FoundationDB.Async
 {
 	using FoundationDB.Client.Utils;
+	using JetBrains.Annotations;
 	using System;
 	using System.Diagnostics;
 	using System.Runtime.ExceptionServices;
@@ -52,12 +53,12 @@ namespace FoundationDB.Async
 		private readonly IAsyncTarget<T> m_target;
 
 		public AsyncPump(
-			IAsyncSource<T> source,
-			IAsyncTarget<T> target
+			[NotNull] IAsyncSource<T> source,
+			[NotNull] IAsyncTarget<T> target
 		)
 		{
-			Contract.Requires(source!= null);
-			Contract.Requires(target != null);
+			if (source == null) throw new ArgumentNullException("source");
+			if (target == null) throw new ArgumentNullException("target");
 
 			m_source = source;
 			m_target = target;
@@ -74,9 +75,9 @@ namespace FoundationDB.Async
 			get { return m_state; }
 		}
 
-		public IAsyncSource<T> Source { get { return m_source; } }
+		public IAsyncSource<T> Source { [NotNull] get { return m_source; } }
 
-		public IAsyncTarget<T> Target { get { return m_target; } }
+		public IAsyncTarget<T> Target { [NotNull] get { return m_target; } }
 
 		/// <summary>Run the pump until the inner iterator is done, an error occurs, or the cancellation token is fired</summary>
 		public async Task PumpAsync(bool stopOnFirstError, CancellationToken cancellationToken)
@@ -190,7 +191,7 @@ namespace FoundationDB.Async
 		[Conditional("FULL_DEBUG")]
 		private static void LogPump(string msg)
 		{
-			Console.WriteLine("[pump#" + Thread.CurrentThread.ManagedThreadId + "] " + msg);
+			Console.WriteLine("[pump#{0}] {1}", Thread.CurrentThread.ManagedThreadId, msg);
 		}
 
 		#endregion

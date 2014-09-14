@@ -30,6 +30,7 @@ namespace FoundationDB.Client
 {
 	using FoundationDB.Async;
 	using FoundationDB.Client.Utils;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.IO;
@@ -46,19 +47,19 @@ namespace FoundationDB.Client
 		private int m_offsetInCurrentSlice;
 		private Task<int> m_lastTask;
 
-		internal SliceListStream(Slice[] slices)
+		internal SliceListStream([NotNull] Slice[] slices)
 		{
 			if (slices == null) throw new ArgumentNullException("slices");
 			Init(slices);
 		}
 
-		public SliceListStream(IEnumerable<Slice> slices)
+		public SliceListStream([NotNull] IEnumerable<Slice> slices)
 		{
 			if (slices == null) throw new ArgumentNullException("slices");
 			Init(slices.ToArray());
 		}
 
-		private void Init(Slice[] slices)
+		private void Init([NotNull] Slice[] slices)
 		{
 			m_slices = slices;
 			long total = 0;
@@ -315,6 +316,7 @@ namespace FoundationDB.Client
 			if (offset > buffer.Length - count) throw new ArgumentException("Offset and count must fit inside the buffer");
 		}
 
+		[ContractAnnotation("=> halt")]
 		private static void StreamIsClosed()
 		{
 			throw new ObjectDisposedException(null, "The stream was already closed");

@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -31,8 +31,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace FoundationDB.Client
 {
 	using FoundationDB.Client.Utils;
+	using JetBrains.Annotations;
 	using System;
-	using System.Collections.Generic;
 	using System.Runtime.CompilerServices;
 	using System.Runtime.ConstrainedExecution;
 	using System.Runtime.InteropServices;
@@ -52,6 +52,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Reject an invalid slice by throw an error with the appropriate diagnostic message.</summary>
 		/// <param name="slice">Slice that is being naugthy</param>
+		[ContractAnnotation("=> halt")]
 		public static void ThrowMalformedSlice(Slice slice)
 		{
 #if DEBUG
@@ -81,6 +82,7 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>Reject an invalid slice by throw an error with the appropriate diagnostic message.</summary>
+		[ContractAnnotation("=> halt")]
 		public static void ThrowMalformedBuffer(byte[] array, int offset, int count)
 		{
 			if (offset < 0) throw new ArgumentException("The specified segment has a negative offset, which is not legal. This may be a side effect of memory corruption.", "offset");
@@ -103,7 +105,11 @@ namespace FoundationDB.Client
 			const int ALIGNMENT = 16; // MUST BE A POWER OF TWO!
 			const int MASK = (-ALIGNMENT) & int.MaxValue;
 
-			if (size <= ALIGNMENT) return ALIGNMENT;
+			if (size <= ALIGNMENT)
+			{
+				if (size < 0) throw new ArgumentOutOfRangeException("size", "Size cannot be negative");
+				return ALIGNMENT;
+			}
 			// force an exception if we overflow above 2GB
 			checked { return (size + (ALIGNMENT - 1)) & MASK; }
 		}
@@ -136,7 +142,7 @@ namespace FoundationDB.Client
 		/// <param name="offset">Offset of the start of the segment in the buffer</param>
 		/// <param name="count">Number of bytes in the segment</param>
 		/// <returns>A 32-bit signed hash code calculated from all the bytes in the segment.</returns>
-		public static int ComputeHashCode(byte[] bytes, int offset, int count)
+		public static int ComputeHashCode([NotNull] byte[] bytes, int offset, int count)
 		{
 			if (bytes == null || offset < 0 || count < 0 || offset + count > bytes.Length) SliceHelpers.ThrowMalformedBuffer(bytes, offset, count);
 
@@ -148,7 +154,7 @@ namespace FoundationDB.Client
 		/// <param name="offset">Offset of the start of the segment in the buffer</param>
 		/// <param name="count">Number of bytes in the segment</param>
 		/// <returns>A 32-bit signed hash code calculated from all the bytes in the segment.</returns>
-		public static int ComputeHashCodeUnsafe(byte[] bytes, int offset, int count)
+		public static int ComputeHashCodeUnsafe([NotNull] byte[] bytes, int offset, int count)
 		{
 			Contract.Requires(bytes != null && offset >= 0 && count >= 0);
 
@@ -193,14 +199,14 @@ namespace FoundationDB.Client
 		/// <param name="rightOffset">Start offset in right buffer</param>
 		/// <param name="count">Number of bytes to compare</param>
 		/// <returns>true if all bytes are the same in both segments</returns>
-		public static bool SameBytesUnsafe(byte[] left, int leftOffset, byte[] right, int rightOffset, int count)
+		public static bool SameBytesUnsafe([NotNull] byte[] left, int leftOffset, [NotNull] byte[] right, int rightOffset, int count)
 		{
 			Contract.Requires(left != null && leftOffset >= 0 && right != null && rightOffset >= 0 && count >= 0);
 
 			// for very small keys, the cost of pinning and marshalling may be too high
 			if (count <= 8)
 			{
-				while(count--> 0)
+				while (count-- > 0)
 				{
 					if (left[leftOffset++] != right[rightOffset++]) return false;
 				}
@@ -268,7 +274,7 @@ namespace FoundationDB.Client
 		/// * "A" &lt; "B"
 		/// * "A" &lt; "AA"
 		/// * "AA" &lt; "B"</remarks>
-		public static int CompareBytesUnsafe(byte[] left, int leftOffset, int leftCount, byte[] right, int rightOffset, int rightCount)
+		public static int CompareBytesUnsafe([NotNull] byte[] left, int leftOffset, int leftCount, [NotNull] byte[] right, int rightOffset, int rightCount)
 		{
 			Contract.Requires(left != null && right != null && leftOffset >= 0 && leftCount >= 0 && rightOffset >= 0 && rightCount >= 0);
 
@@ -325,14 +331,14 @@ namespace FoundationDB.Client
 		/// <param name="srcOffset">Offset in source buffer</param>
 		/// <param name="count">Number of bytes to copy</param>
 		/// <remarks>CAUTION: THE ARGUMENTS ARE REVERSED! They are in the same order as memcpy() and memmove(), with destination first, and source second!</remarks>
-		public static void CopyBytesUnsafe(byte[] dst, int dstOffset, byte[] src, int srcOffset, int count)
+		public static void CopyBytesUnsafe([NotNull] byte[] dst, int dstOffset, [NotNull] byte[] src, int srcOffset, int count)
 		{
 			Contract.Requires(dst != null && src != null && dstOffset >= 0 && srcOffset >= 0 && count >= 0);
 
 			if (count <= 8)
 			{ // for very small keys, the cost of pinning and marshalling may be to high
 
-				while(count-- > 0)
+				while (count-- > 0)
 				{
 					dst[dstOffset++] = src[srcOffset++];
 				}
@@ -367,23 +373,75 @@ namespace FoundationDB.Client
 		/// <param name="src">Point to the source buffer</param>
 		/// <param name="count">Number of bytes to copy</param>
 		/// <remarks>CAUTION: THE ARGUMENTS ARE REVERSED! They are in the same order as memcpy() and memmove(), with destination first, and source second!</remarks>
-		public static unsafe void CopyBytesUnsafe(byte[] dst, int dstOffset, byte* src, int count)
+		public static unsafe void CopyBytesUnsafe([NotNull] byte[] dst, int dstOffset, byte* src, int count)
 		{
 			Contract.Requires(dst != null && src != null && dstOffset >= 0 && count >= 0);
 
 			if (count <= 8)
 			{
-				while(count-- > 0)
+				while (count-- > 0)
 				{
 					dst[dstOffset++] = *src++;
 				}
 			}
 			else
 			{
-				fixed(byte* ptr = dst)
+				fixed (byte* ptr = dst)
 				{
 					MoveMemoryUnsafe(ptr + dstOffset, src, count);
 				}
+			}
+		}
+
+		/// <summary>Fill the content of a managed buffer with the same byte repeated</summary>
+		public static void SetBytes(byte[] bytes, byte value)
+		{
+			if (bytes == null) throw new ArgumentNullException("bytes");
+			SetBytes(bytes, 0, bytes.Length, value);
+		}
+
+		/// <summary>Fill the content of a managed segment with the same byte repeated</summary>
+		public static void SetBytes(byte[] bytes, int offset, int count, byte value)
+		{
+			SliceHelpers.EnsureBufferIsValid(bytes, offset, count);
+
+			if (count <= 8)
+			{ // for very small keys, the cost of pinning and marshalling may be to high
+
+				while (count-- > 0)
+				{
+					bytes[offset++] = value;
+				}
+			}
+			else
+			{
+				unsafe
+				{
+					fixed (byte* ptr = bytes)
+					{
+						SetMemoryUnsafe(ptr + offset, value, count);
+					}
+				}
+			}
+		}
+
+		/// <summary>Fill the content of a native byte segment with the same byte repeated</summary>
+		public static unsafe void SetBytes(byte* bytes, int count, byte value)
+		{
+			if (bytes == null) throw new ArgumentNullException("bytes");
+			if (count < 0) throw new ArgumentException("Count cannot be a negative number.", "count");
+
+			if (count <= 8)
+			{ // for very small keys, the cost of pinning and marshalling may be to high
+
+				while (count-- > 0)
+				{
+					*bytes++ = value;
+				}
+			}
+			else
+			{
+				SetMemoryUnsafe(bytes, value, count);
 			}
 		}
 
@@ -439,6 +497,114 @@ namespace FoundationDB.Client
 				if ((count & 1) != 0)
 				{
 					*dest = *src;
+				}
+			}
+#endif
+		}
+
+		/// <summary>Dangerously fill native memory with a specific byte</summary>
+		/// <param name="dest">Where to fill the bytes</param>
+		/// <param name="c">Byte to set</param>
+		/// <param name="count">Number of bytes to set</param>
+		/// <remarks>If <paramref name="c"/>==0, you should call <see cref="ClearMemoryUnsafe"/></remarks>
+		[SecurityCritical, ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
+#if USE_NATIVE_MEMORY_OPERATORS && !NET_4_0
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#endif
+		private static unsafe void SetMemoryUnsafe(byte* dest, byte c, int count)
+		{
+			Contract.Requires(dest != null && count >= 0);
+
+#if USE_NATIVE_MEMORY_OPERATORS
+			NativeMethods.memset(dest, c, new IntPtr(count));
+#else
+			int fill32 = c;
+			fill32 = fill32 << 8 | c;
+			fill32 = fill32 << 8 | c;
+			fill32 = fill32 << 8 | c;
+
+			if (count >= 16)
+			{
+				do
+				{
+					*((int*)(dest + 0)) = fill32;
+					*((int*)(dest + 4)) = fill32;
+					*((int*)(dest + 8)) = fill32;
+					*((int*)(dest + 12)) = fill32;
+					dest += 16;
+				}
+				while ((count -= 16) >= 16);
+			}
+			if (count > 0)
+			{
+				if ((count & 8) != 0)
+				{
+					*((int*)(dest + 0)) = fill32;
+					*((int*)(dest + 4)) = fill32;
+					dest += 8;
+				}
+				if ((count & 4) != 0)
+				{
+					*((int*)dest) = fill32;
+					dest += 4;
+				}
+				if ((count & 2) != 0)
+				{
+					*((short*)dest) = (short)fill32;
+					dest += 2;
+				}
+				if ((count & 1) != 0)
+				{
+					*dest = c;
+				}
+			}
+#endif
+		}
+
+		/// <summary>Dangerously clear native memory</summary>
+		/// <param name="dest">Where to clear the bytes</param>
+		/// <param name="count">Number of bytes to clear</param>
+		[SecurityCritical, ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
+#if USE_NATIVE_MEMORY_OPERATORS && !NET_4_0
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#endif
+		private static unsafe void ClearMemoryUnsafe(byte* dest, int count)
+		{
+			Contract.Requires(dest != null && count >= 0);
+
+#if USE_NATIVE_MEMORY_OPERATORS
+			NativeMethods.memset(dest, 0, new IntPtr(count));
+#else
+			if (count >= 16)
+			{
+				do
+				{
+					*((ulong*)(dest + 0)) = 0UL;
+					*((ulong*)(dest + 8)) = 0UL;
+					dest += 16;
+				}
+				while ((count -= 16) >= 16);
+			}
+			if (count > 0)
+			{
+				if ((count & 8) != 0)
+				{
+					*((ulong*)(dest)) = 0UL;
+					dest += 8;
+				}
+				if ((count & 4) != 0)
+				{
+					*((int*)dest) = 0;
+					dest += 4;
+				}
+				if ((count & 2) != 0)
+				{
+					*((short*)dest) = 0;
+					dest += 2;
+				}
+				if ((count & 1) != 0)
+				{
+					*dest = 0;
 				}
 			}
 #endif
@@ -550,6 +716,14 @@ namespace FoundationDB.Client
 			/// <remarks>Copies count bytes from src to dest. If some regions of the source area and the destination overlap, both functions ensure that the original source bytes in the overlapping region are copied before being overwritten.</remarks>
 			[DllImport("msvcrt.dll", CallingConvention = CallingConvention.Cdecl, SetLastError = false)]
 			public static extern byte* memmove(byte* dest, byte* src, IntPtr count);
+
+			/// <summary>Sets the first <paramref name="count"/> bytes of <paramref name="dest"/> to the byte <paramref name="c"/>.</summary>
+			/// <param name="dest">Pointer to destination</param>
+			/// <param name="c">Byte to set</param>
+			/// <param name="count">Number of bytes</param>
+			/// <returns>The value of <paramref name="dest"/></returns>
+			[DllImport("msvcrt.dll", CallingConvention = CallingConvention.Cdecl, SetLastError = false)]
+			public static extern byte* memset(byte* dest, int c, IntPtr count);
 
 		}
 

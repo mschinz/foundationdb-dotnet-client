@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -34,6 +34,7 @@ namespace FoundationDB.Client
 	using FoundationDB.Async;
 	using FoundationDB.Client.Utils;
 	using FoundationDB.Linq;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Diagnostics;
@@ -87,7 +88,7 @@ namespace FoundationDB.Client
 
 			#endregion
 
-			public PagingIterator(FdbRangeQuery<T> query, IFdbReadOnlyTransaction transaction)
+			public PagingIterator([NotNull] FdbRangeQuery<T> query, IFdbReadOnlyTransaction transaction)
 			{
 				Contract.Requires(query != null);
 
@@ -104,10 +105,17 @@ namespace FoundationDB.Client
 
 			protected override async Task<bool> OnFirstAsync(CancellationToken cancellationToken)
 			{
-				this.Remaining = this.Query.Limit > 0 ? this.Query.Limit : default(int?);
-
+				this.Remaining = this.Query.Limit;
 				this.Begin = this.Query.Begin;
 				this.End = this.Query.End;
+
+				if (this.Remaining == 0)
+				{
+					// we can safely optimize this case by not doing any query, because it should not have any impact on conflict resolutions.
+					// => The result of 'query.Take(0)' will not change even if someone adds/remove to the range
+					// => The result of 'query.Take(X)' where X would be computed from reads in the db, and be equal to 0, would conflict because of those reads anyway.
+					return false;
+				}
 
 				var bounds = this.Query.OriginalRange;
 
@@ -164,10 +172,10 @@ namespace FoundationDB.Client
 
 				var options = new FdbRangeOptions
 				{
-					Limit = this.Remaining.GetValueOrDefault(),
+					Limit = this.Remaining,
 					TargetBytes = this.Query.TargetBytes,
 					Mode = this.Query.Mode,
-					Reverse = this.Query.Reverse
+					Reverse = this.Query.Reversed
 				};
 
 				// select the appropriate streaming mode if purpose is not default
@@ -215,7 +223,7 @@ namespace FoundationDB.Client
 						if (!this.AtEnd)
 						{ // update begin..end so that next call will continue from where we left...
 							var lastKey = result.Last.Key;
-							if (this.Query.Reverse)
+							if (this.Query.Reversed)
 							{
 								this.End = FdbKeySelector.FirstGreaterOrEqual(lastKey);
 							}

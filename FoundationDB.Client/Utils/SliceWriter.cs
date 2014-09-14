@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace FoundationDB.Client
 {
 	using FoundationDB.Client.Utils;
+	using JetBrains.Annotations;
 	using System;
 	using System.Diagnostics;
 	using System.Runtime.CompilerServices;
@@ -71,13 +72,13 @@ namespace FoundationDB.Client
 		/// <summary>Create a new binary writer using an existing buffer</summary>
 		/// <param name="buffer">Initial buffer</param>
 		/// <remarks>Since the content of the <paramref name="buffer"/> will be modified, only a temporary or scratch buffer should be used. If the writer needs to grow, a new buffer will be allocated.</remarks>
-		public SliceWriter(byte[] buffer)
+		public SliceWriter([NotNull] byte[] buffer)
 			: this(buffer, 0)
 		{ }
 
 		/// <summary>Create a new binary buffer using an existing buffer and with the cursor to a specific location</summary>
 		/// <remarks>Since the content of the <paramref name="buffer"/> will be modified, only a temporary or scratch buffer should be used. If the writer needs to grow, a new buffer will be allocated.</remarks>
-		public SliceWriter(byte[] buffer, int index)
+		public SliceWriter([NotNull] byte[] buffer, int index)
 		{
 			if (buffer == null) throw new ArgumentNullException("buffer");
 			if (index < 0 || index > buffer.Length) throw new ArgumentOutOfRangeException("index");
@@ -117,7 +118,7 @@ namespace FoundationDB.Client
 
 		#region Public Properties...
 
-		/// <summary>Returns true is the buffer contains at least some data</summary>
+		/// <summary>Returns true if the buffer contains at least some data</summary>
 		public bool HasData
 		{
 			get { return this.Position > 0; }
@@ -127,12 +128,13 @@ namespace FoundationDB.Client
 		/// <param name="index">Index in the buffer (0-based if positive, from the end if negative)</param>
 		public byte this[int index]
 		{
-			[System.Diagnostics.Contracts.Pure]
+			[Pure]
 			get
 			{
-				Contract.Assert(this.Buffer != null && this.Position >= 0 && index < this.Position && -index <= this.Position);
+				Contract.Assert(this.Buffer != null && this.Position >= 0);
 				//note: we will get bound checking for free in release builds
 				if (index < 0) index += this.Position;
+				if (index < 0 || index >= this.Position) throw new IndexOutOfRangeException();
 				return this.Buffer[index];
 			}
 		}
@@ -144,7 +146,7 @@ namespace FoundationDB.Client
 		/// <exception cref="ArgumentOutOfRangeException">If either <paramref name="beginInclusive"/> or <paramref name="endExclusive"/> is outside of the currently allocated buffer.</exception>
 		public Slice this[int? beginInclusive, int? endExclusive]
 		{
-			[System.Diagnostics.Contracts.Pure]
+			[Pure]
 			get
 			{
 				int from = beginInclusive ?? 0;
@@ -168,7 +170,7 @@ namespace FoundationDB.Client
 		
 		/// <summary>Returns a byte array filled with the contents of the buffer</summary>
 		/// <remarks>The buffer is copied in the byte array. And change to one will not impact the other</remarks>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure][NotNull]
 		public byte[] GetBytes()
 		{
 			Contract.Requires(this.Position >= 0);
@@ -184,7 +186,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Returns a slice pointing to the content of the buffer</summary>
 		/// <remarks>Any change to the slice will change the buffer !</remarks>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure]
 		public Slice ToSlice()
 		{
 			if (this.Buffer == null || this.Position == 0)
@@ -202,7 +204,7 @@ namespace FoundationDB.Client
 		/// <param name="count">Size of the segment</param>
 		/// <remarks>Any change to the slice will change the buffer !</remarks>
 		/// <exception cref="ArgumentException">If <paramref name="count"/> is less than zero, or larger than the current buffer size</exception>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure]
 		public Slice ToSlice(int count)
 		{
 			if (count < 0 || count > this.Position) throw new ArgumentException("count");
@@ -214,7 +216,7 @@ namespace FoundationDB.Client
 		/// <param name="offset">Offset of the segment from the start of the buffer</param>
 		/// <remarks>Any change to the slice will change the buffer !</remarks>
 		/// <exception cref="ArgumentException">If <paramref name="offset"/> is less then zero, or after the current position</exception>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure]
 		public Slice Substring(int offset)
 		{
 			if (offset < 0 || offset > this.Position) throw new ArgumentException("Offset must be inside the buffer", "offset");
@@ -228,7 +230,7 @@ namespace FoundationDB.Client
 		/// <param name="count">Size of the segment</param>
 		/// <remarks>Any change to the slice will change the buffer !</remarks>
 		/// <exception cref="ArgumentException">If either <paramref name="offset"/> or <paramref name="count"/> are less then zero, or do not fit inside the current buffer</exception>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure]
 		public Slice Substring(int offset, int count)
 		{
 			if (offset < 0 || offset >= this.Position) throw new ArgumentException("Offset must be inside the buffer", "offset");
@@ -272,6 +274,7 @@ namespace FoundationDB.Client
 			}
 			else
 			{
+				//REVIEW: should we throw if there are less bytes in the buffer than we want to flush ?
 				this.Position = 0;
 				return 0;
 			}
@@ -555,6 +558,8 @@ namespace FoundationDB.Client
 			this.Position += count;
 		}
 
+		#region Fixed, Little-Endian
+
 		/// <summary>Writes a 16-bit unsigned integer, using little-endian encoding</summary>
 		/// <remarks>Advances the cursor by 2 bytes</remarks>
 		public void WriteFixed16(uint value)
@@ -598,6 +603,58 @@ namespace FoundationDB.Client
 			buffer[p + 7] = (byte)(value >> 56);
 			this.Position = p + 8;
 		}
+
+		#endregion
+
+		#region Fixed, Big-Endian
+
+		/// <summary>Writes a 16-bit unsigned integer, using big-endian encoding</summary>
+		/// <remarks>Advances the cursor by 2 bytes</remarks>
+		public void WriteFixed16BE(uint value)
+		{
+			EnsureBytes(2);
+			var buffer = this.Buffer;
+			int p = this.Position;
+			buffer[p] = (byte)(value >> 8);
+			buffer[p + 1] = (byte)value;
+			this.Position = p + 2;
+		}
+
+		/// <summary>Writes a 32-bit unsigned integer, using big-endian encoding</summary>
+		/// <remarks>Advances the cursor by 4 bytes</remarks>
+		public void WriteFixed32BE(uint value)
+		{
+			EnsureBytes(4);
+			var buffer = this.Buffer;
+			int p = this.Position;
+			buffer[p] = (byte)(value >> 24);
+			buffer[p + 1] = (byte)(value >> 16);
+			buffer[p + 2] = (byte)(value >> 8);
+			buffer[p + 3] = (byte)(value);
+			this.Position = p + 4;
+		}
+
+		/// <summary>Writes a 64-bit unsigned integer, using big-endian encoding</summary>
+		/// <remarks>Advances the cursor by 8 bytes</remarks>
+		public void WriteFixed64BE(ulong value)
+		{
+			EnsureBytes(8);
+			var buffer = this.Buffer;
+			int p = this.Position;
+			buffer[p] = (byte)(value >> 56);
+			buffer[p + 1] = (byte)(value >> 48);
+			buffer[p + 2] = (byte)(value >> 40);
+			buffer[p + 3] = (byte)(value >> 32);
+			buffer[p + 4] = (byte)(value >> 24);
+			buffer[p + 5] = (byte)(value >> 16);
+			buffer[p + 6] = (byte)(value >> 8);
+			buffer[p + 7] = (byte)(value);
+			this.Position = p + 8;
+		}
+
+		#endregion
+
+		#region Variable size
 
 		/// <summary>Writes a 7-bit encoded unsigned int (aka 'Varint16') at the end, and advances the cursor</summary>
 		public void WriteVarint16(ushort value)
@@ -693,6 +750,8 @@ namespace FoundationDB.Client
 		/// <summary>Writes a length-prefixed byte array, and advances the cursor</summary>
 		public void WriteVarbytes(Slice value)
 		{
+			//REVIEW: what should we do for Slice.Nil ?
+
 			SliceHelpers.EnsureSliceIsValid(ref value);
 			int n = value.Count;
 			if (n < 128)
@@ -703,7 +762,10 @@ namespace FoundationDB.Client
 				// write the count (single byte)
 				buffer[p] = (byte)n;
 				// write the bytes
-				SliceHelpers.CopyBytesUnsafe(buffer, p + 1, value.Array, value.Offset, n);
+				if (n > 0)
+				{
+					SliceHelpers.CopyBytesUnsafe(buffer, p + 1, value.Array, value.Offset, n);
+				}
 				this.Position = p + n + 1;
 			}
 			else
@@ -715,6 +777,8 @@ namespace FoundationDB.Client
 				this.Position += n;
 			}
 		}
+
+		#endregion
 
 		/// <summary>Ensures that we can fit a specific amount of data at the end of the buffer</summary>
 		/// <param name="count">Number of bytes that will be written</param>
@@ -770,6 +834,7 @@ namespace FoundationDB.Client
 			Array.Resize(ref buffer, size);
 		}
 
+		[ContractAnnotation("=> halt")]
 		private static void FailCannotGrowBuffer()
 		{
 #if DEBUG

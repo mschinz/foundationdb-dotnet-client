@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,6 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace FoundationDB.Client
 {
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Threading;
@@ -41,13 +42,13 @@ namespace FoundationDB.Client
 		int Id { get; }
 
 		/// <summary>Context of this transaction.</summary>
-		FdbOperationContext Context { get; }
+		FdbOperationContext Context { [NotNull] get; }
 
 		/// <summary>If true, the transaction is operating in Snapshot mode</summary>
 		bool IsSnapshot { get; }
 
 		/// <summary>Return a Snapshotted version of this transaction, or the transaction itself it is already operating in Snapshot mode.</summary>
-		IFdbReadOnlyTransaction Snapshot { get; }
+		IFdbReadOnlyTransaction Snapshot { [NotNull] get; }
 
 		/// <summary>Cancellation Token linked to the life time of the transaction</summary>
 		/// <remarks>Will be triggered if the transaction is aborted or disposed</remarks>
@@ -71,7 +72,7 @@ namespace FoundationDB.Client
 		/// <summary>Reads several values from the database snapshot represented by the current transaction</summary>
 		/// <param name="keys">Keys to be looked up in the database</param>
 		/// <returns>Task that will return an array of values, or an exception. Each item in the array will contain the value of the key at the same index in <paramref name="keys"/>, or Slice.Nil if that key does not exist.</returns>
-		Task<Slice[]> GetValuesAsync(Slice[] keys);
+		Task<Slice[]> GetValuesAsync([NotNull] Slice[] keys);
 
 		/// <summary>Resolves a key selector against the keys in the database snapshot represented by the current transaction.</summary>
 		/// <param name="selector">Key selector to resolve</param>
@@ -81,7 +82,7 @@ namespace FoundationDB.Client
 		/// <summary>Resolves several key selectors against the keys in the database snapshot represented by the current transaction.</summary>
 		/// <param name="selectors">Key selectors to resolve</param>
 		/// <returns>Task that will return an array of keys matching the selectors, or an exception</returns>
-		Task<Slice[]> GetKeysAsync(FdbKeySelector[] selectors);
+		Task<Slice[]> GetKeysAsync([NotNull] FdbKeySelector[] selectors);
 
 		/// <summary>
 		/// Reads all key-value pairs in the database snapshot represented by transaction (potentially limited by Limit, TargetBytes, or Mode)

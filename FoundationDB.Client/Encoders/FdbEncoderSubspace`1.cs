@@ -30,6 +30,7 @@ namespace FoundationDB.Client
 {
 	using FoundationDB.Client.Utils;
 	using FoundationDB.Layers.Tuples;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Linq;
@@ -40,7 +41,7 @@ namespace FoundationDB.Client
 		protected readonly FdbSubspace m_parent;
 		protected readonly IKeyEncoder<T> m_encoder;
 
-		public FdbEncoderSubspace(FdbSubspace subspace, IKeyEncoder<T> encoder)
+		public FdbEncoderSubspace([NotNull] FdbSubspace subspace, [NotNull] IKeyEncoder<T> encoder)
 			: base(subspace)
 		{
 			if (subspace == null) throw new ArgumentNullException("subspace");
@@ -49,31 +50,35 @@ namespace FoundationDB.Client
 			m_encoder = encoder;
 		}
 
-		public IKeyEncoder<T> Encoder { get { return m_encoder; } }
+		public IKeyEncoder<T> Encoder
+		{
+			[NotNull]
+			get { return m_encoder; }
+		}
 
 		#region Transaction Helpers...
 
-		public void Set(IFdbTransaction trans, T key, Slice value)
+		public void Set([NotNull] IFdbTransaction trans, T key, Slice value)
 		{
 			trans.Set(EncodeKey(key), value);
 		}
 
-		public void Clear(IFdbTransaction trans, T key)
+		public void Clear([NotNull] IFdbTransaction trans, T key)
 		{
 			trans.Clear(EncodeKey(key));
 		}
 
-		public Task<Slice> GetAsync(IFdbReadOnlyTransaction trans, T key)
+		public Task<Slice> GetAsync([NotNull] IFdbReadOnlyTransaction trans, T key)
 		{
 			return trans.GetAsync(EncodeKey(key));
 		}
 
-		public Task<Slice[]> GetValuesAsync(IFdbReadOnlyTransaction trans, T[] keys)
+		public Task<Slice[]> GetValuesAsync([NotNull] IFdbReadOnlyTransaction trans, [NotNull] T[] keys)
 		{
 			return trans.GetValuesAsync(EncodeKeyRange(keys));
 		}
 
-		public Task<Slice[]> GetValuesAsync(IFdbReadOnlyTransaction trans, IEnumerable<T> keys)
+		public Task<Slice[]> GetValuesAsync([NotNull] IFdbReadOnlyTransaction trans, [NotNull] IEnumerable<T> keys)
 		{
 			return trans.GetValuesAsync(EncodeKeyRange(keys));
 		}
@@ -87,12 +92,20 @@ namespace FoundationDB.Client
 			return this.Key + m_encoder.EncodeKey(key);
 		}
 
-		public Slice[] EncodeKeyRange(T[] keys)
+		[NotNull]
+		public Slice[] EncodeKeyRange([NotNull] T[] keys)
 		{
 			return FdbKey.Merge(this.Key, m_encoder.EncodeRange(keys));
 		}
 
-		public Slice[] EncodeKeyRange(IEnumerable<T> keys)
+		[NotNull]
+		public Slice[] EncodeKeyRange<TElement>([NotNull] TElement[] elements, Func<TElement, T> selector)
+		{
+			return FdbKey.Merge(this.Key, m_encoder.EncodeRange(elements, selector));
+		}
+
+		[NotNull]
+		public Slice[] EncodeKeyRange([NotNull] IEnumerable<T> keys)
 		{
 			return FdbKey.Merge(this.Key, m_encoder.EncodeRange(keys));
 		}
@@ -102,7 +115,8 @@ namespace FoundationDB.Client
 			return m_encoder.DecodeKey(this.ExtractAndCheck(encoded));
 		}
 
-		public T[] DecodeKeyRange(Slice[] encoded)
+		[NotNull]
+		public T[] DecodeKeyRange([NotNull] Slice[] encoded)
 		{
 			var extracted = new Slice[encoded.Length];
 			for (int i = 0; i < encoded.Length; i++)
@@ -112,7 +126,8 @@ namespace FoundationDB.Client
 			return m_encoder.DecodeRange(extracted);
 		}
 
-		public IEnumerable<T> DecodeKeys(IEnumerable<Slice> source)
+		[NotNull]
+		public IEnumerable<T> DecodeKeys([NotNull] IEnumerable<Slice> source)
 		{
 			return source.Select(key => m_encoder.DecodeKey(key));
 		}
@@ -122,7 +137,8 @@ namespace FoundationDB.Client
 			return FdbTuple.ToRange(EncodeKey(key));
 		}
 
-		public FdbKeyRange[] ToRange(T[] keys)
+		[NotNull]
+		public FdbKeyRange[] ToRange([NotNull] T[] keys)
 		{
 			var packed = EncodeKeyRange(keys);
 

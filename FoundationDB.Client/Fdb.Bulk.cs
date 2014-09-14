@@ -29,10 +29,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace FoundationDB.Client
 {
 	using FoundationDB.Client.Utils;
+	using FoundationDB.Filters.Logging;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Diagnostics;
-	using System.Linq;
 	using System.Threading;
 	using System.Threading.Tasks;
 
@@ -50,7 +51,7 @@ namespace FoundationDB.Client
 			/// <param name="cancellationToken">Token used to cancel the operation</param>
 			/// <returns>Total number of values inserted in the database</returns>
 			/// <remarks>In case of a non-retryable error, some of the keys may remain in the database. Other transactions running at the same time may observe only a fraction of the keys until the operation completes.</remarks>
-			public static Task<long> WriteAsync(IFdbDatabase db, IEnumerable<KeyValuePair<Slice, Slice>> data, CancellationToken cancellationToken)
+			public static Task<long> WriteAsync([NotNull] IFdbDatabase db, [NotNull] IEnumerable<KeyValuePair<Slice, Slice>> data, CancellationToken cancellationToken)
 			{
 				return WriteAsync(db, data, null, cancellationToken);
 			}
@@ -62,7 +63,7 @@ namespace FoundationDB.Client
 			/// <param name="cancellationToken">Token used to cancel the operation</param>
 			/// <returns>Total number of values inserted in the database</returns>
 			/// <remarks>In case of a non-retryable error, some of the keys may remain in the database. Other transactions running at the same time may observe only a fraction of the keys until the operation completes.</remarks>
-			public static async Task<long> WriteAsync(IFdbDatabase db, IEnumerable<KeyValuePair<Slice, Slice>> data, IProgress<long> progress, CancellationToken cancellationToken)
+			public static async Task<long> WriteAsync([NotNull] IFdbDatabase db, [NotNull] IEnumerable<KeyValuePair<Slice, Slice>> data, IProgress<long> progress, CancellationToken cancellationToken)
 			{
 				if (db == null) throw new ArgumentNullException("db");
 				if (data == null) throw new ArgumentNullException("data");
@@ -72,8 +73,8 @@ namespace FoundationDB.Client
 				// We will batch keys into chunks (bounding by count and bytes), then attempt to insert that batch in the database.
 				// Each transaction should try to never exceed ~1MB of size
 
-				int maxBatchCount = 2 * 1024;
-				int maxBatchSize = 256 * 1024; //REVIEW: 256KB seems reasonable, but maybe we could also try with multiple transactions in // ?
+				const int maxBatchCount = 2 * 1024;
+				const int maxBatchSize = 256 * 1024; //REVIEW: 256KB seems reasonable, but maybe we could also try with multiple transactions in // ?
 
 				var chunk = new List<KeyValuePair<Slice, Slice>>();
 
@@ -131,7 +132,7 @@ namespace FoundationDB.Client
 			/// <param name="cancellationToken">Token used to cancel the operation</param>
 			/// <returns>Number of items that have been inserted</returns>
 			/// <remarks>In case of a non-retryable error, some of the items may remain in the database. Other transactions running at the same time may observe only a fraction of the items until the operation completes.</remarks>
-			public static Task<long> InsertAsync<T>(IFdbDatabase db, IEnumerable<T> source, Action<T, IFdbTransaction> handler, CancellationToken cancellationToken)
+			public static Task<long> InsertAsync<T>([NotNull] IFdbDatabase db, [NotNull] IEnumerable<T> source, [NotNull] Action<T, IFdbTransaction> handler, CancellationToken cancellationToken)
 			{
 				if (db == null) throw new ArgumentNullException("db");
 				if (source == null) throw new ArgumentNullException("source");
@@ -157,7 +158,7 @@ namespace FoundationDB.Client
 			/// <param name="cancellationToken">Token used to cancel the operation</param>
 			/// <returns>Number of items that have been inserted</returns>
 			/// <remarks>In case of a non-retryable error, some of the items may remain in the database. Other transactions running at the same time may observe only a fraction of the items until the operation completes.</remarks>
-			public static Task<long> InsertAsync<T>(IFdbDatabase db, IEnumerable<T> source, Func<T, IFdbTransaction, Task> handler, CancellationToken cancellationToken)
+			public static Task<long> InsertAsync<T>([NotNull] IFdbDatabase db, [NotNull] IEnumerable<T> source, [NotNull] Func<T, IFdbTransaction, Task> handler, CancellationToken cancellationToken)
 			{
 				if (db == null) throw new ArgumentNullException("db");
 				if (source == null) throw new ArgumentNullException("source");
@@ -177,9 +178,9 @@ namespace FoundationDB.Client
 
 			/// <summary>Runs a long duration bulk write</summary>
 			internal static async Task<long> RunWriteOperationAsync<TSource>(
-				IFdbDatabase db,
-				IEnumerable<TSource> source,
-				Delegate body,
+				[NotNull] IFdbDatabase db,
+				[NotNull] IEnumerable<TSource> source,
+				[NotNull] Delegate body,
 				int maxBatchCount,
 				int maxBatchSize,
 				CancellationToken cancellationToken
@@ -288,7 +289,7 @@ namespace FoundationDB.Client
 			}
 
 			/// <summary>Retry commiting a segment of a batch, splitting it in sub-segments as needed</summary>
-			private static async Task RetryChunk<TSource>(IFdbTransaction trans, List<TSource> chunk, int offset, int count, Func<TSource, IFdbTransaction, Task> bodyAsync, Action<TSource, IFdbTransaction> bodyBlocking)
+			private static async Task RetryChunk<TSource>([NotNull] IFdbTransaction trans, [NotNull] List<TSource> chunk, int offset, int count, Func<TSource, IFdbTransaction, Task> bodyAsync, Action<TSource, IFdbTransaction> bodyBlocking)
 			{
 				Contract.Requires(trans != null && chunk != null && offset >= 0 && count >= 0 && (bodyAsync != null || bodyBlocking != null));
 
@@ -376,7 +377,7 @@ namespace FoundationDB.Client
 			public sealed class BatchOperationContext
 			{
 				/// <summary>Transaction corresponding to the current generation</summary>
-				public IFdbReadOnlyTransaction Transaction { get; internal set; }
+				public IFdbReadOnlyTransaction Transaction { [NotNull] get; internal set; }
 
 				/// <summary>Offset of the current batch from the start of the source sequence</summary>
 				public long Position { get; internal set; }
@@ -396,7 +397,10 @@ namespace FoundationDB.Client
 				/// <summary>Cooldown timer used for scaling up and down the step size</summary>
 				public int Cooldown { get; internal set; }
 
+				/// <summary>Total elapsed time since the start of this bulk operation</summary>
 				public TimeSpan ElapsedTotal { get { return this.TotalTimer.Elapsed; } }
+
+				/// <summary>Elapsed time since the start of the current transaction window</summary>
 				public TimeSpan ElapsedGeneration { get { return this.GenerationTimer.Elapsed; } }
 
 				/// <summary>Returns true if all values processed up to this point used the same transaction, or false if more than one transaction was used.</summary>
@@ -429,11 +433,11 @@ namespace FoundationDB.Client
 			/// <param name="cancellationToken">Token used to cancel the operation</param>
 			/// <returns>Task that completes when all the elements of <paramref name="source"/> have been processed, a non-retryable error occurs, or <paramref name="cancellationToken"/> is triggered</returns>
 			public static Task ForEachAsync<TSource, TLocal>(
-				IFdbDatabase db,
-				IEnumerable<TSource> source,
-				Func<TLocal> localInit,
-				Func<TSource[], BatchOperationContext, TLocal, Task<TLocal>> body,
-				Action<TLocal> localFinally,
+				[NotNull] IFdbDatabase db,
+				[NotNull] IEnumerable<TSource> source,
+				[NotNull] Func<TLocal> localInit,
+				[NotNull] Func<TSource[], BatchOperationContext, TLocal, Task<TLocal>> body,
+				[NotNull] Action<TLocal> localFinally,
 				CancellationToken cancellationToken)
 			{
 				if (db == null) throw new ArgumentNullException("db");
@@ -457,11 +461,11 @@ namespace FoundationDB.Client
 			/// <returns>Task that completes when all the elements of <paramref name="source"/> have been processed, a non-retryable error occurs, or <paramref name="cancellationToken"/> is triggered</returns>
 			[Obsolete("EXPERIMENTAL: do not use yet!")]
 			public static Task ForEachAsync<TSource, TLocal>(
-				IFdbDatabase db,
-				IEnumerable<TSource> source,
-				Func<TLocal> localInit,
-				Func<TSource[], BatchOperationContext, TLocal, TLocal> body,
-				Action<TLocal> localFinally,
+				[NotNull] IFdbDatabase db,
+				[NotNull] IEnumerable<TSource> source,
+				[NotNull] Func<TLocal> localInit,
+				[NotNull] Func<TSource[], BatchOperationContext, TLocal, TLocal> body,
+				[NotNull] Action<TLocal> localFinally,
 				CancellationToken cancellationToken)
 			{
 				if (db == null) throw new ArgumentNullException("db");
@@ -486,9 +490,9 @@ namespace FoundationDB.Client
 			/// <param name="cancellationToken">Token used to cancel the operation</param>
 			/// <returns>Task that completes when all the elements of <paramref name="source"/> have been processed, a non-retryable error occurs, or <paramref name="cancellationToken"/> is triggered</returns>
 			public static Task ForEachAsync<TSource>(
-				IFdbDatabase db,
-				IEnumerable<TSource> source,
-				Func<TSource[], BatchOperationContext, Task> body,
+				[NotNull] IFdbDatabase db,
+				[NotNull] IEnumerable<TSource> source,
+				[NotNull] Func<TSource[], BatchOperationContext, Task> body,
 				CancellationToken cancellationToken)
 			{
 				if (db == null) throw new ArgumentNullException("db");
@@ -507,9 +511,9 @@ namespace FoundationDB.Client
 			/// <returns>Task that completes when all the elements of <paramref name="source"/> have been processed, a non-retryable error occurs, or <paramref name="cancellationToken"/> is triggered</returns>
 			[Obsolete("EXPERIMENTAL: do not use yet!")]
 			public static Task ForEachAsync<TSource>(
-				IFdbDatabase db,
-				IEnumerable<TSource> source,
-				Action<TSource[], BatchOperationContext> body,
+				[NotNull] IFdbDatabase db,
+				[NotNull] IEnumerable<TSource> source,
+				[NotNull] Action<TSource[], BatchOperationContext> body,
 				CancellationToken cancellationToken)
 			{
 				if (db == null) throw new ArgumentNullException("db");
@@ -538,10 +542,10 @@ namespace FoundationDB.Client
 			/// <param name="cancellationToken">Token used to cancel the operation</param>
 			/// <returns>Task that completes when all the elements of <paramref name="source"/> have been processed, a non-retryable error occurs, or <paramref name="cancellationToken"/> is triggered</returns>
 			public static Task<TAggregate> AggregateAsync<TSource, TAggregate>(
-				IFdbDatabase db,
-				IEnumerable<TSource> source,
-				Func<TAggregate> localInit,
-				Func<TSource[], BatchOperationContext, TAggregate, Task<TAggregate>> body,
+				[NotNull] IFdbDatabase db,
+				[NotNull] IEnumerable<TSource> source,
+				[NotNull] Func<TAggregate> localInit,
+				[NotNull] Func<TSource[], BatchOperationContext, TAggregate, Task<TAggregate>> body,
 				CancellationToken cancellationToken)
 			{
 				if (db == null) throw new ArgumentNullException("db");
@@ -565,11 +569,11 @@ namespace FoundationDB.Client
 			/// <param name="cancellationToken">Token used to cancel the operation</param>
 			/// <returns>Task that completes when all the elements of <paramref name="source"/> have been processed, a non-retryable error occurs, or <paramref name="cancellationToken"/> is triggered</returns>
 			public static Task<TResult> AggregateAsync<TSource, TAggregate, TResult>(
-				IFdbDatabase db,
-				IEnumerable<TSource> source,
-				Func<TAggregate> init,
-				Func<TSource[], BatchOperationContext, TAggregate, Task<TAggregate>> body,
-				Func<TAggregate, TResult> transform,
+				[NotNull] IFdbDatabase db,
+				[NotNull] IEnumerable<TSource> source,
+				[NotNull] Func<TAggregate> init,
+				[NotNull] Func<TSource[], BatchOperationContext, TAggregate, Task<TAggregate>> body,
+				[NotNull] Func<TAggregate, TResult> transform,
 				CancellationToken cancellationToken)
 			{
 				if (db == null) throw new ArgumentNullException("db");
@@ -585,8 +589,8 @@ namespace FoundationDB.Client
 
 			/// <summary>Runs a long duration bulk read</summary>
 			internal static async Task<TResult> RunBatchedReadOperationAsync<TSource, TLocal, TResult>(
-				IFdbDatabase db,
-				IEnumerable<TSource> source,
+				[NotNull] IFdbDatabase db,
+				[NotNull] IEnumerable<TSource> source,
 				Func<TLocal> localInit,
 				Delegate body,
 				Delegate localFinally,
@@ -794,6 +798,170 @@ namespace FoundationDB.Client
 				}
 				return count;
 			}
+
+			#endregion
+
+			#region Import/Export...
+
+			/// <summary>Export the content of a potentially large range of keys defined by a pair of begin and end keys.</summary>
+			/// <param name="db">Database used for the operation</param>
+			/// <param name="beginInclusive">Key defining the start range (included)</param>
+			/// <param name="endExclusive">Key defining the end of the range (excluded)</param>
+			/// <param name="handler">Lambda that will be called for each batch of data read from the database. The first argument is the array of ordered key/value pairs in the batch, taken from the same database snapshot. The second argument is the offset of the first item in the array, from the start of the range. The third argument is a token should be used by any async i/o performed by the lambda.</param>
+			/// <param name="cancellationToken">Token used to cancel the operation</param>
+			/// <returns>Number of keys exported</returns>
+			/// <remarks>This method cannot guarantee that all data will be read from the same snapshot of the database, which means that writes committed while the export is running may be seen partially. Only the items inside a single batch are guaranteed to be from the same snapshot of the database.</remarks>
+			public static Task<long> ExportAsync([NotNull] IFdbDatabase db, Slice beginInclusive, Slice endExclusive, [NotNull] Func<KeyValuePair<Slice, Slice>[], long, CancellationToken, Task> handler, CancellationToken cancellationToken)
+			{
+				return ExportAsync(db, FdbKeySelector.FirstGreaterOrEqual(beginInclusive), FdbKeySelector.FirstGreaterOrEqual(endExclusive), handler, cancellationToken);
+			}
+
+			/// <summary>Export the content of a potentially large range of keys defined by a pair of begin and end keys.</summary>
+			/// <param name="db">Database used for the operation</param>
+			/// <param name="range">Pair of keys defining the start range</param>
+			/// <param name="handler">Lambda that will be called for each batch of data read from the database. The first argument is the array of ordered key/value pairs in the batch, taken from the same database snapshot. The second argument is the offset of the first item in the array, from the start of the range. The third argument is a token should be used by any async i/o performed by the lambda.</param>
+			/// <param name="cancellationToken">Token used to cancel the operation</param>
+			/// <returns>Number of keys exported</returns>
+			/// <remarks>This method cannot guarantee that all data will be read from the same snapshot of the database, which means that writes committed while the export is running may be seen partially. Only the items inside a single batch are guaranteed to be from the same snapshot of the database.</remarks>
+			public static Task<long> ExportAsync([NotNull] IFdbDatabase db, FdbKeyRange range, [NotNull] Func<KeyValuePair<Slice, Slice>[], long, CancellationToken, Task> handler, CancellationToken cancellationToken)
+			{
+				return ExportAsync(db, FdbKeySelector.FirstGreaterOrEqual(range.Begin), FdbKeySelector.FirstGreaterOrEqual(range.End), handler, cancellationToken);
+			}
+
+			/// <summary>Export the content of a potentially large range of keys defined by a pair of selectors.</summary>
+			/// <param name="db">Database used for the operation</param>
+			/// <param name="begin">Selector defining the start of the range (included)</param>
+			/// <param name="end">Selector defining the end of the range (excluded)</param>
+			/// <param name="handler">Lambda that will be called for each batch of data read from the database. The first argument is the array of ordered key/value pairs in the batch, taken from the same database snapshot. The second argument is the offset of the first item in the array, from the start of the range. The third argument is a token should be used by any async i/o performed by the lambda.</param>
+			/// <param name="cancellationToken">Token used to cancel the operation</param>
+			/// <returns>Number of keys exported</returns>
+			/// <remarks>This method cannot guarantee that all data will be read from the same snapshot of the database, which means that writes committed while the export is running may be seen partially. Only the items inside a single batch are guaranteed to be from the same snapshot of the database.</remarks>
+			public static async Task<long> ExportAsync([NotNull] IFdbDatabase db, FdbKeySelector begin, FdbKeySelector end, [NotNull] Func<KeyValuePair<Slice, Slice>[], long, CancellationToken, Task> handler, CancellationToken cancellationToken)
+			{
+				if (db == null) throw new ArgumentNullException("db");
+				if (handler == null) throw new ArgumentNullException("handler");
+				cancellationToken.ThrowIfCancellationRequested();
+
+				// to maximize throughput, we want to read as much as possible per transaction, so that means that we should prefetch the next batch while the current batch is processing
+
+				// If handler() is always faster than the prefetch(), the bottleneck is the database (or possibly the network).
+				//	R: [ Read B1 ... | Read B2 ........ | Read B3 ..... ]
+				//	W:               [ Process B1 ]-----[ Process B2 ]--[ Process B3]X
+
+				// TODO: alternative method that we could use to almost double the throughput (second thread that exports backwards starting from the end)
+				//	R: [ Read B1 ... | Read B2 ..... | Read B3 ..... | ...
+				//	R:		| Read B10 ...... | Read B9 ..... | Read B8 ..... | ...
+				//	W:               [ Process B1 | Process B10 | Process B2 | Process B9 | Process B3 | ...
+
+				// If handler() is always slower than the prefetch(), the bottleneck is the local processing (or possibly local disk if writing to disk)
+				//	R: [ Read B1 | Read B2 ]----------[ Read B3 ]-------[ Read B4 ]--------
+				//	W:           [ Process B1 ....... | Process B2 .... | Process B3 .... | Process B4 ]
+
+				// If handler() does some buffering, and only flush to disk every N batches, then reading may stall because we could have prefetch more pages (TODO: we could prefetch more pages in queue ?)
+				//	R: [ Read B1 | Read B2 | Read B3 | Read B4 | Read B5 ]------------------[ Read B6 | Read B7 ]....
+				//	W:           [*B1]-----[*B2]-----[*B3]-----[ *B4 + flush to disk ...... |*B5]-----[*B6]------....
+
+				// this lambda should be applied on any new or reset transaction
+				Action<IFdbReadOnlyTransaction> reset = (tr) =>
+				{
+					// should export be lower priority? TODO: make if configurable!
+					tr.WithPriorityBatch();
+				};
+
+				using (var tr = db.BeginReadOnlyTransaction(cancellationToken))
+				{
+					reset(tr);
+
+					//TODO: make options configurable!
+					var options = new FdbRangeOptions
+					{
+						// serial mode is optimized for a single client with maximum throughput
+						Mode = FdbStreamingMode.Serial,
+					};
+
+					long count = 0;
+					long chunks = 0;
+					long waitForFetch = 0;
+
+					// read the first batch
+					var page = await FetchNextBatchAsync(tr, begin, end, options, reset);
+					++waitForFetch;
+
+					while (page.HasMore)
+					{
+						// prefetch the next one (don't wait for the task yet)
+						var next = FetchNextBatchAsync(tr, FdbKeySelector.FirstGreaterThan(page.Last.Key), end, options, reset);
+
+						// process the current one
+						if (page.Count > 0)
+						{
+							cancellationToken.ThrowIfCancellationRequested();
+							await handler(page.Chunk, count, cancellationToken);
+							++chunks;
+							count += page.Count;
+						}
+
+						if (next.Status != TaskStatus.RanToCompletion) ++waitForFetch;
+						page = await next;
+					}
+
+					// process the last page, if any
+					if (page.Count > 0)
+					{
+						cancellationToken.ThrowIfCancellationRequested();
+						await handler(page.Chunk, count, cancellationToken);
+						++chunks;
+						count += page.Count;
+					}
+
+					tr.Annotate("Exported {0} items in {1} chunks ({2:N1}% network)", count, chunks, chunks > 0 ? (100.0 * waitForFetch / chunks) : 0.0);
+
+					return count;
+				}
+			}
+
+			/// <summary>Read the next batch from a transaction, and retries if needed</summary>
+			/// <param name="tr">Transaction used to read, which may be reset if a retry is needed</param>
+			/// <param name="begin">Begin selector</param>
+			/// <param name="end">End selector</param>
+			/// <param name="options">Range read options</param>
+			/// <param name="onReset">Action (optional) that can reconfigure a transaction whenever it gets reset inside the retry loop.</param>
+			/// <returns>Task that will return the next batch</returns>
+			private static async Task<FdbRangeChunk> FetchNextBatchAsync(IFdbReadOnlyTransaction tr, FdbKeySelector begin, FdbKeySelector end, [NotNull] FdbRangeOptions options, Action<IFdbReadOnlyTransaction> onReset = null)
+			{
+				Contract.Requires(tr != null && options != null);
+
+				// read the next batch from the db, retrying if needed
+				while (true)
+				{
+					FdbException error = null;
+					try
+					{
+						return await tr.GetRangeAsync(begin, end, options).ConfigureAwait(false);
+					}
+					catch (FdbException e)
+					{
+						error = e;
+						//TODO: update this once we can await inside catch blocks in C# 6.0
+					}
+					if (error != null)
+					{
+						if (error.Code == FdbError.PastVersion)
+						{
+							tr.Reset();
+						}
+						else
+						{
+							await tr.OnErrorAsync(error.Code).ConfigureAwait(false);
+						}
+						// before retrying, we need to re-configure the transaction if needed
+						if (onReset != null)
+						{
+							onReset(tr);
+						}
+					}
+				}
+			}		
 
 			#endregion
 

@@ -30,6 +30,7 @@ namespace FoundationDB.Client
 {
 	using FoundationDB.Async;
 	using FoundationDB.Client.Utils;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.ComponentModel;
@@ -47,15 +48,20 @@ namespace FoundationDB.Client
 	{
 		#region Static Members...
 
+		/// <summary>Cached empty array of bytes</summary>
 		internal static readonly byte[] EmptyArray = new byte[0];
+
+		/// <summary>Cached empty array of slices</summary>
+		internal static readonly Slice[] EmptySliceArray = new Slice[0];
+
+		/// <summary>Cached array of bytes from 0 to 255</summary>
+		internal static readonly byte[] ByteSprite;
 
 		/// <summary>Null slice ("no segment")</summary>
 		public static readonly Slice Nil = default(Slice);
 
 		/// <summary>Empty slice ("segment of 0 bytes")</summary>
 		public static readonly Slice Empty = new Slice(EmptyArray, 0, 0);
-
-		private static readonly byte[] ByteSprite;
 
 		[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2207:InitializeValueTypeStaticFieldsInline")]
 		static Slice()
@@ -67,7 +73,7 @@ namespace FoundationDB.Client
 
 		#endregion
 
-		/// <summary>Pointer to the buffer (or null for Slice.Nil)</summary>
+		/// <summary>Pointer to the buffer (or null for <see cref="Slice.Nil"/>)</summary>
 		public readonly byte[] Array;
 
 		/// <summary>Offset of the first byte of the slice in the parent buffer</summary>
@@ -149,12 +155,26 @@ namespace FoundationDB.Client
 			return new Slice(bytes, 0, count);
 		}
 
+		/// <summary>Creates a new slice that contains the same byte repeated</summary>
+		/// <param name="value">Byte that will fill the slice</param>
+		/// <param name="count">Number of bytes</param>
+		/// <returns>New slice that contains <paramref name="count"/> times the byte <paramref name="value"/>.</returns>
+		public static Slice Repeat(byte value, int count)
+		{
+			if (count < 0) throw new ArgumentException("count");
+			if (count == 0) return Slice.Empty;
+
+			var res = new byte[count];
+			SliceHelpers.SetBytes(res, 0, count, value);
+			return new Slice(res, 0, res.Length);
+		}
+
 		/// <summary>Create a new slice filled with random bytes taken from a random number generator</summary>
 		/// <param name="prng">Pseudo random generator to use (needs locking if instance is shared)</param>
 		/// <param name="count">Number of random bytes to generate</param>
 		/// <returns>Slice of <paramref name="count"/> bytes taken from <paramref name="prng"/></returns>
 		/// <remarks>Warning: <see cref="System.Random"/> is not thread-safe ! If the <paramref name="prng"/> instance is shared between threads, then it needs to be locked before calling this method.</remarks>
-		public static Slice Random(Random prng, int count)
+		public static Slice Random([NotNull] Random prng, int count)
 		{
 			if (prng == null) throw new ArgumentNullException("prng");
 			if (count < 0) throw new ArgumentOutOfRangeException("count", count, "Count cannot be negative");
@@ -171,7 +191,7 @@ namespace FoundationDB.Client
 		/// <param name="nonZeroBytes">If true, produce a sequence of non-zero bytes.</param>
 		/// <returns>Slice of <paramref name="count"/> bytes taken from <paramref name="rng"/></returns>
 		/// <remarks>Warning: All RNG implementations may not be thread-safe ! If the <paramref name="rng"/> instance is shared between threads, then it may need to be locked before calling this method.</remarks>
-		public static Slice Random(System.Security.Cryptography.RandomNumberGenerator rng, int count, bool nonZeroBytes = false)
+		public static Slice Random([NotNull] System.Security.Cryptography.RandomNumberGenerator rng, int count, bool nonZeroBytes = false)
 		{
 			if (rng == null) throw new ArgumentNullException("rng");
 			if (count < 0) throw new ArgumentOutOfRangeException("count", count, "Count cannot be negative");
@@ -232,7 +252,7 @@ namespace FoundationDB.Client
 		/// <param name="values">An array that contains the elements to concatenate.</param>
 		/// <returns>A slice that consists of the elements in a value delimited by the <paramref name="separator"/> slice. If <paramref name="values"/> is an empty array, the method returns <see cref="Slice.Empty"/>.</returns>
 		/// <exception cref="ArgumentNullException">If <paramref name="values"/> is null.</exception>
-		public static Slice Join(Slice separator, Slice[] values)
+		public static Slice Join(Slice separator, [NotNull] Slice[] values)
 		{
 			if (values == null) throw new ArgumentNullException("values");
 
@@ -250,7 +270,7 @@ namespace FoundationDB.Client
 		/// <returns>A slice that consists of the slices in <paramref name="values"/> delimited by the <paramref name="separator"/> slice. -or- <see cref="Slice.Empty"/> if <paramref name="count"/> is zero, <paramref name="values"/> has no elements, or <paramref name="separator"/> and all the elements of <paramref name="values"/> are <see cref="Slice.Empty"/>.</returns>
 		/// <exception cref="ArgumentNullException">If <paramref name="values"/> is null.</exception>
 		/// <exception cref="ArgumentOutOfRangeException">If <paramref name="startIndex"/> or <paramref name="count"/> is less than zero. -or- <paramref name="startIndex"/> plus <paramref name="count"/> is greater than the number of elements in <paramref name="values"/>.</exception>
-		public static Slice Join(Slice separator, Slice[] values, int startIndex, int count)
+		public static Slice Join(Slice separator, [NotNull] Slice[] values, int startIndex, int count)
 		{
 			// Note: this method is modeled after String.Join() and should behave the same
 			// - Only difference is that Slice.Nil and Slice.Empty are equivalent (either for separator, or for the elements of the array)
@@ -288,7 +308,7 @@ namespace FoundationDB.Client
 		/// <param name="values">A sequence will return the elements to concatenate.</param>
 		/// <returns>A slice that consists of the slices in <paramref name="values"/> delimited by the <paramref name="separator"/> slice. -or- <see cref="Slice.Empty"/> if <paramref name="values"/> has no elements, or <paramref name="separator"/> and all the elements of <paramref name="values"/> are <see cref="Slice.Empty"/>.</returns>
 		/// <exception cref="ArgumentNullException">If <paramref name="values"/> is null.</exception>
-		public static Slice Join(Slice separator, IEnumerable<Slice> values)
+		public static Slice Join(Slice separator, [NotNull] IEnumerable<Slice> values)
 		{
 			if (values == null) throw new ArgumentNullException("values");
 			var array = (values as Slice[]) ?? values.ToArray();
@@ -303,7 +323,8 @@ namespace FoundationDB.Client
 		/// <returns>A byte array that consists of the slices in <paramref name="values"/> delimited by the <paramref name="separator"/> slice. -or- an emtpy array if <paramref name="count"/> is zero, <paramref name="values"/> has no elements, or <paramref name="separator"/> and all the elements of <paramref name="values"/> are <see cref="Slice.Empty"/>.</returns>
 		/// <exception cref="ArgumentNullException">If <paramref name="values"/> is null.</exception>
 		/// <exception cref="ArgumentOutOfRangeException">If <paramref name="startIndex"/> or <paramref name="count"/> is less than zero. -or- <paramref name="startIndex"/> plus <paramref name="count"/> is greater than the number of elements in <paramref name="values"/>.</exception>
-		public static byte[] JoinBytes(Slice separator, Slice[] values, int startIndex, int count)
+		[NotNull]
+		public static byte[] JoinBytes(Slice separator, [NotNull] Slice[] values, int startIndex, int count)
 		{
 			// Note: this method is modeled after String.Join() and should behave the same
 			// - Only difference is that Slice.Nil and Slice.Empty are equivalent (either for separator, or for the elements of the array)
@@ -314,12 +335,12 @@ namespace FoundationDB.Client
 			if (count < 0) throw new ArgumentOutOfRangeException("count", count, "Count must be a positive integer");
 			if (startIndex > values.Length - count) throw new ArgumentOutOfRangeException("startIndex", startIndex, "Start index must fit within the array");
 
-			if (count == 0) return new byte[0];
-			if (count == 1) return values[0].GetBytes();
+			if (count == 0) return Slice.EmptyArray;
+			if (count == 1) return values[startIndex].GetBytes() ?? Slice.EmptyArray;
 
 			int size = 0;
-			for (int i = 0; i < values.Length; i++) size += values[i].Count;
-			size += (values.Length - 1) * separator.Count;
+			for (int i = 0; i < count; i++) size = checked(size + values[startIndex + i].Count);
+			size = checked(size + (count - 1) * separator.Count);
 
 			// if the size overflows, that means that the resulting buffer would need to be >= 2 GB, which is not possible!
 			if (size < 0) throw new OutOfMemoryException();
@@ -327,10 +348,10 @@ namespace FoundationDB.Client
 			//note: we want to make sure the buffer of the writer will be the exact size (so that we can use the result as a byte[] without copying again)
 			var tmp = new byte[size];
 			int p = 0;
-			for (int i = 0; i < values.Length; i++)
+			for (int i = 0; i < count; i++)
 			{
 				if (i > 0) separator.WriteTo(tmp, ref p);
-				values[i].WriteTo(tmp, ref p);
+				values[startIndex + i].WriteTo(tmp, ref p);
 			}
 			Contract.Assert(p == tmp.Length);
 			return tmp;
@@ -341,7 +362,8 @@ namespace FoundationDB.Client
 		/// <param name="values">A sequence will return the elements to concatenate.</param>
 		/// <returns>A byte array that consists of the slices in <paramref name="values"/> delimited by the <paramref name="separator"/> slice. -or- an empty array if <paramref name="values"/> has no elements, or <paramref name="separator"/> and all the elements of <paramref name="values"/> are <see cref="Slice.Empty"/>.</returns>
 		/// <exception cref="ArgumentNullException">If <paramref name="values"/> is null.</exception>
-		public static byte[] JoinBytes(Slice separator, IEnumerable<Slice> values)
+		[NotNull]
+		public static byte[] JoinBytes(Slice separator, [NotNull] IEnumerable<Slice> values)
 		{
 			if (values == null) throw new ArgumentNullException("values");
 			var array = (values as Slice[]) ?? values.ToArray();
@@ -356,7 +378,7 @@ namespace FoundationDB.Client
 		/// <exception cref="System.ArgumentException">If <paramref name="separator"/> is empty, or if <paramref name="options"/> is not one of the <see cref="StringSplitOptions"/> values.</exception>
 		/// <remarks>If <paramref name="input"/> does not contain the delimiter, the returned array consists of a single element that repeats the input, or an empty array if input is itself empty.
 		/// To reduce memory usage, the sub-slices returned in the array will all share the same underlying buffer of the input slice.</remarks>
-		[System.Diagnostics.Contracts.Pure]
+		[NotNull]
 		public static Slice[] Split(Slice input, Slice separator, StringSplitOptions options = StringSplitOptions.None)
 		{
 			// this method is made to behave the same way as String.Split(), especially the following edge cases
@@ -374,7 +396,7 @@ namespace FoundationDB.Client
 			bool skipEmpty = options.HasFlag(StringSplitOptions.RemoveEmptyEntries);
 			if (input.Count == 0)
 			{
-				return skipEmpty ? new Slice[0] : new Slice[1] { Slice.Empty };
+				return skipEmpty ? Slice.EmptySliceArray : new Slice[1] { Slice.Empty };
 			}
 
 			while (input.Count > 0)
@@ -741,14 +763,20 @@ namespace FoundationDB.Client
 			// UUID are stored using the RFC4122 format (Big Endian), while .NET's System.GUID use Little Endian
 			// => we will convert the GUID into a UUID under the hood, and hope that it gets converted back when read from the db
 
-			return new Uuid(value).ToSlice();
+			return new Uuid128(value).ToSlice();
 		}
 
 		/// <summary>Create a 16-byte slice containing an RFC 4122 compliant 128-bit UUID</summary>
 		/// <remarks>You should never call this method on a slice created from the result of calling System.Guid.ToByteArray() !</remarks>
-		public static Slice FromUuid(Uuid value)
+		public static Slice FromUuid128(Uuid128 value)
 		{
 			// UUID should already be in the RFC 4122 ordering
+			return value.ToSlice();
+		}
+
+		/// <summary>Create an 8-byte slice containing an 64-bit UUID</summary>
+		public static Slice FromUuid64(Uuid64 value)
+		{
 			return value.ToSlice();
 		}
 
@@ -802,6 +830,11 @@ namespace FoundationDB.Client
 		{
 			if (string.IsNullOrEmpty(hexaString)) return hexaString == null ? Slice.Nil : Slice.Empty;
 
+			if (hexaString.IndexOf(' ') > 0)
+			{ // remove spaces
+				hexaString = hexaString.Replace(" ", "");
+			}
+
 			if ((hexaString.Length & 1) != 0) throw new ArgumentException("Hexadecimal string must be of even length", "hexaString");
 
 			var buffer = new byte[hexaString.Length >> 1];
@@ -832,7 +865,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Return a byte array containing all the bytes of the slice, or null if the slice is null</summary>
 		/// <returns>Byte array with a copy of the slice, or null</returns>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure][CanBeNull]
 		public byte[] GetBytes()
 		{
 			if (this.Count == 0) return this.Array == null ? null : Slice.EmptyArray;
@@ -845,7 +878,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Return a byte array containing a subset of the bytes of the slice, or null if the slice is null</summary>
 		/// <returns>Byte array with a copy of a subset of the slice, or null</returns>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure][CanBeNull]
 		public byte[] GetBytes(int offset, int count)
 		{
 			//TODO: throw if this.Array == null ? (what does "Slice.Nil.GetBytes(..., 0)" mean ?)
@@ -867,6 +900,7 @@ namespace FoundationDB.Client
 		/// You can use this method to convert text into specific encodings, load bitmaps (JPEG, PNG, ...), or any serialization format that requires a Stream or TextReader instance.
 		/// Disposing this stream will have no effect on the slice.
 		/// </remarks>
+		[Pure][NotNull]
 		public SliceStream AsStream()
 		{
 			SliceHelpers.EnsureSliceIsValid(ref this);
@@ -875,6 +909,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Stringify a slice containing only ASCII chars</summary>
 		/// <returns>ASCII string, or null if the slice is null</returns>
+		[Pure][CanBeNull]
 		public string ToAscii()
 		{
 			if (this.Count == 0) return this.HasValue ? String.Empty : default(string);
@@ -884,6 +919,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Stringify a slice containing an UTF-8 encoded string</summary>
 		/// <returns>Unicode string, or null if the slice is null</returns>
+		[Pure][CanBeNull]
 		public string ToUnicode()
 		{
 			if (this.Count == 0) return this.HasValue ? String.Empty : default(string);
@@ -892,6 +928,7 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>Converts a slice using Base64 encoding</summary>
+		[Pure][CanBeNull]
 		public string ToBase64()
 		{
 			if (this.Count == 0) return this.Array == null ? null : String.Empty;
@@ -901,6 +938,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Converts a slice into a string with each byte encoded into hexadecimal (lowercase)</summary>
 		/// <returns>"0123456789abcdef"</returns>
+		[Pure][CanBeNull]
 		public string ToHexaString()
 		{
 			if (this.Count == 0) return this.Array == null ? null : String.Empty;
@@ -922,16 +960,17 @@ namespace FoundationDB.Client
 		/// <summary>Converts a slice into a string with each byte encoded into hexadecimal (uppercase) separated by a char</summary>
 		/// <param name="sep">Character used to separate the hexadecimal pairs (ex: ' ')</param>
 		/// <returns>"01 23 45 67 89 ab cd ef"</returns>
+		[Pure][CanBeNull]
 		public string ToHexaString(char sep)
 		{
 			if (this.Count == 0) return this.Array == null ? null : String.Empty;
 			var buffer = this.Array;
 			int p = this.Offset;
 			int n = this.Count;
-			var sb = new StringBuilder(n * 3);
+			var sb = new StringBuilder(n * (sep == '\0' ? 2 : 3));
 			while (n-- > 0)
 			{
-				if (sb.Length > 0) sb.Append(sep);
+				if (sep != '\0' && sb.Length > 0) sb.Append(sep);
 				byte b = buffer[p++];
 				int x = b >> 4;
 				sb.Append((char)(x + (x < 10 ? 48 : 55)));
@@ -963,8 +1002,8 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>Helper method that dumps the slice as a string (if it contains only printable ascii chars) or an hex array if it contains non printable chars. It should only be used for logging and troubleshooting !</summary>
-		/// <returns>Returns either "'abc'", "&lt;00 42 7F&gt;", or "{ ...JSON... }". Returns "''" for Slice.Empty, and "" for Slice.Nil</returns>
-		[System.Diagnostics.Contracts.Pure]
+		/// <returns>Returns either "'abc'", "&lt;00 42 7F&gt;", or "{ ...JSON... }". Returns "''" for Slice.Empty, and "" for <see cref="Slice.Nil"/></returns>
+		[Pure][NotNull]
 		public string ToAsciiOrHexaString() //REVIEW: rename this to ToPrintableString() ?
 		{
 			//REVIEW: rename this to ToFriendlyString() ? or ToLoggableString() ?
@@ -1022,6 +1061,7 @@ namespace FoundationDB.Client
 		/// <summary>Converts a slice into a byte</summary>
 		/// <returns>Value of the first and only byte of the slice, or 0 if the slice is null or empty.</returns>
 		/// <exception cref="System.FormatException">If the slice has more than one byte</exception>
+		[Pure]
 		public byte ToByte()
 		{
 			if (this.Count == 0) return 0;
@@ -1032,6 +1072,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Converts a slice into a boolean.</summary>
 		/// <returns>False if the slice is empty, or is equal to the byte 0; otherwise, true.</returns>
+		[Pure]
 		public bool ToBool()
 		{
 			SliceHelpers.EnsureSliceIsValid(ref this);
@@ -1040,9 +1081,12 @@ namespace FoundationDB.Client
 			//TODO: consider checking if the slice consist of only zeroes ? (ex: Slice.FromFixed32(0) could be considered falsy ...)
 		}
 
+		#region 16 bits...
+
 		/// <summary>Converts a slice into a little-endian encoded, signed 16-bit integer.</summary>
 		/// <returns>0 of the slice is null or empty, a signed integer, or an error if the slice has more than 2 bytes</returns>
 		/// <exception cref="System.FormatException">If there are more than 2 bytes in the slice</exception>
+		[Pure]
 		public short ToInt16()
 		{
 			SliceHelpers.EnsureSliceIsValid(ref this);
@@ -1055,9 +1099,26 @@ namespace FoundationDB.Client
 			}
 		}
 
+		/// <summary>Converts a slice into a big-endian encoded, signed 16-bit integer.</summary>
+		/// <returns>0 of the slice is null or empty, a signed integer, or an error if the slice has more than 2 bytes</returns>
+		/// <exception cref="System.FormatException">If there are more than 2 bytes in the slice</exception>
+		[Pure]
+		public short ToInt16BE()
+		{
+			SliceHelpers.EnsureSliceIsValid(ref this);
+			switch (this.Count)
+			{
+				case 0: return 0;
+				case 1: return this.Array[this.Offset];
+				case 2: return (short)(this.Array[this.Offset + 1] | (this.Array[this.Offset] << 8));
+				default: throw new FormatException("Cannot convert slice into an Int16 because it is larger than 2 bytes");
+			}
+		}
+
 		/// <summary>Converts a slice into a little-endian encoded, unsigned 16-bit integer.</summary>
 		/// <returns>0 of the slice is null or empty, an unsigned integer, or an error if the slice has more than 2 bytes</returns>
 		/// <exception cref="System.FormatException">If there are more than 2 bytes in the slice</exception>
+		[Pure]
 		public ushort ToUInt16()
 		{
 			SliceHelpers.EnsureSliceIsValid(ref this);
@@ -1070,9 +1131,70 @@ namespace FoundationDB.Client
 			}
 		}
 
+		/// <summary>Converts a slice into a little-endian encoded, unsigned 16-bit integer.</summary>
+		/// <returns>0 of the slice is null or empty, an unsigned integer, or an error if the slice has more than 2 bytes</returns>
+		/// <exception cref="System.FormatException">If there are more than 2 bytes in the slice</exception>
+		[Pure]
+		public ushort ToUInt16BE()
+		{
+			SliceHelpers.EnsureSliceIsValid(ref this);
+			switch (this.Count)
+			{
+				case 0: return 0;
+				case 1: return this.Array[this.Offset];
+				case 2: return (ushort)(this.Array[this.Offset + 1] | (this.Array[this.Offset] << 8));
+				default: throw new FormatException("Cannot convert slice into an UInt16 because it is larger than 2 bytes");
+			}
+		}
+
+		/// <summary>Read a variable-length, little-endian encoded, unsigned integer from a specific location in the slice</summary>
+		/// <param name="offset">Relative offset of the first byte</param>
+		/// <param name="bytes">Number of bytes to read (up to 2)</param>
+		/// <returns>Decoded unsigned short.</returns>
+		/// <exception cref="System.ArgumentOutOfRangeException">If <paramref name="bytes"/> is less than zero, or more than 2.</exception>
+		[Pure]
+		public ushort ReadUInt16(int offset, int bytes)
+		{
+			if (bytes < 0 || bytes > 2) throw new ArgumentOutOfRangeException("bytes");
+
+			var buffer = this.Array;
+			int p = UnsafeMapToOffset(offset);
+			switch(bytes)
+			{
+				case 0: return 0;
+				case 1: return buffer[p];
+				default: return (ushort)(buffer[p] | (buffer[p + 1] << 8));
+			}
+		}
+
+		/// <summary>Read a variable-length, big-endian encoded, unsigned integer from a specific location in the slice</summary>
+		/// <param name="offset">Relative offset of the first byte</param>
+		/// <param name="bytes">Number of bytes to read (up to 2)</param>
+		/// <returns>Decoded unsigned short.</returns>
+		/// <exception cref="System.ArgumentOutOfRangeException">If <paramref name="bytes"/> is less than zero, or more than 2.</exception>
+		[Pure]
+		public ushort ReadUInt16BE(int offset, int bytes)
+		{
+			if (bytes < 0 || bytes > 2) throw new ArgumentOutOfRangeException("bytes");
+
+			var buffer = this.Array;
+			int p = UnsafeMapToOffset(offset);
+			switch (bytes)
+			{
+				case 0: return 0;
+				case 1: return buffer[p];
+				default: return (ushort)(buffer[p + 1] | (buffer[p] << 8));
+			}
+		}
+
+		#endregion
+
+		#region 32 bits...
+
 		/// <summary>Converts a slice into a little-endian encoded, signed 32-bit integer.</summary>
 		/// <returns>0 of the slice is null or empty, a signed integer, or an error if the slice has more than 4 bytes</returns>
 		/// <exception cref="System.FormatException">If there are more than 4 bytes in the slice</exception>
+		[Pure]
 		public int ToInt32()
 		{
 			if (this.Count == 0) return 0;
@@ -1082,11 +1204,34 @@ namespace FoundationDB.Client
 			var buffer = this.Array;
 			int n = this.Count;
 			int p = this.Offset + n - 1;
-			int value = 0;
 
-			while (n-- > 0)
+			int value = buffer[p--];
+			while (--n > 0)
 			{
 				value = (value << 8) | buffer[p--];
+			}
+			return value;
+		}
+
+		/// <summary>Converts a slice into a big-endian encoded, signed 32-bit integer.</summary>
+		/// <returns>0 of the slice is null or empty, a signed integer, or an error if the slice has more than 4 bytes</returns>
+		/// <exception cref="System.FormatException">If there are more than 4 bytes in the slice</exception>
+		[Pure]
+		public int ToInt32BE()
+		{
+			SliceHelpers.EnsureSliceIsValid(ref this);
+
+			int n = this.Count;
+			if (n == 0) return 0;
+			if (n > 4) throw new FormatException("Cannot convert slice into an Int32 because it is larger than 4 bytes");
+
+			var buffer = this.Array;
+			int p = this.Offset;
+
+			int value = buffer[p++];
+			while (--n > 0)
+			{
+				value = (value << 8) | buffer[p++];
 			}
 			return value;
 		}
@@ -1094,27 +1239,101 @@ namespace FoundationDB.Client
 		/// <summary>Converts a slice into a little-endian encoded, unsigned 32-bit integer.</summary>
 		/// <returns>0 of the slice is null or empty, an unsigned integer, or an error if the slice has more than 4 bytes</returns>
 		/// <exception cref="System.FormatException">If there are more than 4 bytes in the slice</exception>
+		[Pure]
 		public uint ToUInt32()
 		{
-			if (this.Count == 0) return 0;
-			if (this.Count > 4) throw new FormatException("Cannot convert slice into an UInt32 because it is larger than 4 bytes");
 			SliceHelpers.EnsureSliceIsValid(ref this);
 
-			var buffer = this.Array;
 			int n = this.Count;
-			int p = this.Offset + n - 1;
-			uint value = 0;
+			if (n == 0) return 0;
+			if (n > 4) throw new FormatException("Cannot convert slice into an UInt32 because it is larger than 4 bytes");
 
-			while (n-- > 0)
+			var buffer = this.Array;
+			int p = this.Offset + n - 1;
+
+			uint value = buffer[p--];
+			while (--n > 0)
 			{
 				value = (value << 8) | buffer[p--];
 			}
 			return value;
 		}
 
+		/// <summary>Converts a slice into a big-endian encoded, unsigned 32-bit integer.</summary>
+		/// <returns>0 of the slice is null or empty, an unsigned integer, or an error if the slice has more than 4 bytes</returns>
+		/// <exception cref="System.FormatException">If there are more than 4 bytes in the slice</exception>
+		[Pure]
+		public uint ToUInt32BE()
+		{
+			SliceHelpers.EnsureSliceIsValid(ref this);
+
+			int n = this.Count;
+			if (n == 0) return 0;
+			if (n > 4) throw new FormatException("Cannot convert slice into an UInt32 because it is larger than 4 bytes");
+
+			var buffer = this.Array;
+			int p = this.Offset;
+
+			uint value = buffer[p++];
+			while (--n > 0)
+			{
+				value = (value << 8) | buffer[p++];
+			}
+			return value;
+		}
+
+		/// <summary>Read a variable-length, little-endian encoded, unsigned integer from a specific location in the slice</summary>
+		/// <param name="offset">Relative offset of the first byte</param>
+		/// <param name="bytes">Number of bytes to read (up to 4)</param>
+		/// <returns>Decoded unsigned integer.</returns>
+		/// <exception cref="System.ArgumentOutOfRangeException">If <paramref name="bytes"/> is less than zero, or more than 4.</exception>
+		[Pure]
+		public uint ReadUInt32(int offset, int bytes)
+		{
+			if (bytes < 0 || bytes > 4) throw new ArgumentOutOfRangeException("bytes");
+			if (bytes == 0) return 0;
+
+			var buffer = this.Array;
+			int p = UnsafeMapToOffset(offset) + bytes - 1;
+
+			uint value = buffer[p--];
+			while (--bytes > 0)
+			{
+				value = (value << 8) | buffer[p--];
+			}
+			return value;
+		}
+
+		/// <summary>Read a variable-length, big-endian encoded, unsigned integer from a specific location in the slice</summary>
+		/// <param name="offset">Relative offset of the first byte</param>
+		/// <param name="bytes">Number of bytes to read (up to 4)</param>
+		/// <returns>Decoded unsigned integer.</returns>
+		/// <exception cref="System.ArgumentOutOfRangeException">If <paramref name="bytes"/> is less than zero, or more than 4.</exception>
+		[Pure]
+		public uint ReadUInt32BE(int offset, int bytes)
+		{
+			if (bytes < 0 || bytes > 4) throw new ArgumentOutOfRangeException("bytes");
+			if (bytes == 0) return 0;
+
+			var buffer = this.Array;
+			int p = UnsafeMapToOffset(offset);
+
+			uint value = buffer[p++];
+			while (--bytes > 0)
+			{
+				value = (value << 8) | buffer[p++];
+			}
+			return value;
+		}
+
+		#endregion
+
+		#region 64 bits...
+
 		/// <summary>Converts a slice into a little-endian encoded, signed 64-bit integer.</summary>
 		/// <returns>0 of the slice is null or empty, a signed integer, or an error if the slice has more than 8 bytes</returns>
 		/// <exception cref="System.FormatException">If there are more than 8 bytes in the slice</exception>
+		[Pure]
 		public long ToInt64()
 		{
 			if (this.Count == 0) return 0L;
@@ -1124,9 +1343,9 @@ namespace FoundationDB.Client
 			var buffer = this.Array;
 			int n = this.Count;
 			int p = this.Offset + n - 1;
-			long value = 0;
 
-			while (n-- > 0)
+			long value = buffer[p--];
+			while (--n > 0)
 			{
 				value = (value << 8) | buffer[p--];
 			}
@@ -1134,9 +1353,32 @@ namespace FoundationDB.Client
 			return value;
 		}
 
+		/// <summary>Converts a slice into a big-endian encoded, signed 64-bit integer.</summary>
+		/// <returns>0 of the slice is null or empty, a signed integer, or an error if the slice has more than 8 bytes</returns>
+		/// <exception cref="System.FormatException">If there are more than 8 bytes in the slice</exception>
+		[Pure]
+		public long ToInt64BE()
+		{
+			if (this.Count == 0) return 0L;
+			if (this.Count > 8) throw new FormatException("Cannot convert slice into an Int64 because it is larger than 8 bytes");
+			SliceHelpers.EnsureSliceIsValid(ref this);
+
+			var buffer = this.Array;
+			int n = this.Count;
+			int p = this.Offset;
+
+			long value = buffer[p++];
+			while (--n > 0)
+			{
+				value = (value << 8) | buffer[p++];
+			}
+			return value;
+		}
+
 		/// <summary>Converts a slice into a little-endian encoded, unsigned 64-bit integer.</summary>
 		/// <returns>0 of the slice is null or empty, an unsigned integer, or an error if the slice has more than 8 bytes</returns>
 		/// <exception cref="System.FormatException">If there are more than 8 bytes in the slice</exception>
+		[Pure]
 		public ulong ToUInt64()
 		{
 			if (this.Count == 0) return 0L;
@@ -1146,13 +1388,34 @@ namespace FoundationDB.Client
 			var buffer = this.Array;
 			int n = this.Count;
 			int p = this.Offset + n - 1;
-			ulong value = 0;
 
-			while (n-- > 0)
+			ulong value = buffer[p--];
+			while (--n > 0)
 			{
 				value = (value << 8) | buffer[p--];
 			}
+			return value;
+		}
 
+		/// <summary>Converts a slice into a little-endian encoded, unsigned 64-bit integer.</summary>
+		/// <returns>0 of the slice is null or empty, an unsigned integer, or an error if the slice has more than 8 bytes</returns>
+		/// <exception cref="System.FormatException">If there are more than 8 bytes in the slice</exception>
+		[Pure]
+		public ulong ToUInt64BE()
+		{
+			if (this.Count == 0) return 0L;
+			if (this.Count > 8) throw new FormatException("Cannot convert slice into an UInt64 because it is larger than 8 bytes");
+			SliceHelpers.EnsureSliceIsValid(ref this);
+
+			var buffer = this.Array;
+			int n = this.Count;
+			int p = this.Offset;
+
+			ulong value = buffer[p++];
+			while (--n > 0)
+			{
+				value = (value << 8) | buffer[p++];
+			}
 			return value;
 		}
 
@@ -1161,30 +1424,80 @@ namespace FoundationDB.Client
 		/// <param name="bytes">Number of bytes to read (up to 8)</param>
 		/// <returns>Decoded unsigned integer.</returns>
 		/// <exception cref="System.ArgumentOutOfRangeException">If <paramref name="bytes"/> is less than zero, or more than 8.</exception>
+		[Pure]
 		public ulong ReadUInt64(int offset, int bytes)
 		{
 			if (bytes < 0 || bytes > 8) throw new ArgumentOutOfRangeException("bytes");
+			if (bytes == 0) return 0UL;
 
-			ulong value = 0;
 			var buffer = this.Array;
-			int p = UnsafeMapToOffset(offset);
-			if (bytes > 0)
-			{
-				value = buffer[p++];
-				--bytes;
+			int p = UnsafeMapToOffset(offset) + bytes - 1;
 
-				while (bytes-- > 0)
-				{
-					value <<= 8;
-					value |= buffer[p++];
-				}
+			ulong value = buffer[p--];
+			while (--bytes > 0)
+			{
+				value = (value << 8) | buffer[p--];
 			}
 			return value;
 		}
 
+		/// <summary>Read a variable-length, big-endian encoded, unsigned integer from a specific location in the slice</summary>
+		/// <param name="offset">Relative offset of the first byte</param>
+		/// <param name="bytes">Number of bytes to read (up to 8)</param>
+		/// <returns>Decoded unsigned integer.</returns>
+		/// <exception cref="System.ArgumentOutOfRangeException">If <paramref name="bytes"/> is less than zero, or more than 8.</exception>
+		[Pure]
+		public ulong ReadUInt64BE(int offset, int bytes)
+		{
+			if (bytes < 0 || bytes > 8) throw new ArgumentOutOfRangeException("bytes");
+			if (bytes == 0) return 0UL;
+
+			var buffer = this.Array;
+			int p = UnsafeMapToOffset(offset);
+
+			ulong value = buffer[p++];
+			while (--bytes > 0)
+			{
+				value = (value << 8) | buffer[p++];
+			}
+			return value;
+		}
+
+		/// <summary>Converts a slice into a 64-bit UUID.</summary>
+		/// <returns>Uuid decoded from the Slice.</returns>
+		/// <remarks>The slice can either be an 8-byte array, or an ASCII string of 16, 17 or 19 chars</remarks>
+		[Pure]
+		public Uuid64 ToUuid64()
+		{
+			if (this.Count == 0) return default(Uuid64);
+			SliceHelpers.EnsureSliceIsValid(ref this);
+
+			switch (this.Count)
+			{
+				case 8:
+				{ // binary (8 bytes)
+					return new Uuid64(this);
+				}
+
+				case 16: // hex16
+				case 17: // hex8-hex8
+				case 19: // {hex8-hex8}
+				{
+					return Uuid64.Parse(this.ToAscii());
+				}
+			}
+
+			throw new FormatException("Cannot convert slice into an Uuid64 because it has an incorrect size");
+		}
+
+		#endregion
+
+		#region 128 bits...
+
 		/// <summary>Converts a slice into a Guid.</summary>
 		/// <returns>Native Guid decoded from the Slice.</returns>
 		/// <remarks>The slice can either be a 16-byte RFC4122 GUID, or an ASCII string of 36 chars</remarks>
+		[Pure]
 		public Guid ToGuid()
 		{
 			if (this.Count == 0) return default(Guid);
@@ -1196,7 +1509,7 @@ namespace FoundationDB.Client
 				// UUID are stored using the RFC4122 format (Big Endian), while .NET's System.GUID use Little Endian
 				// we need to swap the byte order of the Data1, Data2 and Data3 chunks, to ensure that Guid.ToString() will return the proper value.
 
-				return new Uuid(this).ToGuid();
+				return new Uuid128(this).ToGuid();
 			}
 
 			if (this.Count == 36)
@@ -1207,30 +1520,33 @@ namespace FoundationDB.Client
 			throw new FormatException("Cannot convert slice into a Guid because it has an incorrect size");
 		}
 
-		/// <summary>Converts a slice into an Uuid.</summary>
+		/// <summary>Converts a slice into a 128-bit UUID.</summary>
 		/// <returns>Uuid decoded from the Slice.</returns>
 		/// <remarks>The slice can either be a 16-byte RFC4122 GUID, or an ASCII string of 36 chars</remarks>
-		public Uuid ToUuid()
+		[Pure]
+		public Uuid128 ToUuid128()
 		{
-			if (this.Count == 0) return default(Uuid);
+			if (this.Count == 0) return default(Uuid128);
 			SliceHelpers.EnsureSliceIsValid(ref this);
 
 			if (this.Count == 16)
 			{
-				return new Uuid(this);
+				return new Uuid128(this);
 			}
 
 			if (this.Count == 36)
 			{
-				return Uuid.Parse(this.ToAscii());
+				return Uuid128.Parse(this.ToAscii());
 			}
 
-			throw new FormatException("Cannot convert slice into Uuid because it has an incorrect size");
+			throw new FormatException("Cannot convert slice into an Uuid128 because it has an incorrect size");
 		}
+
+		#endregion
 
 		/// <summary>Returns a new slice that contains an isolated copy of the buffer</summary>
 		/// <returns>Slice that is equivalent, but is isolated from any changes to the buffer</returns>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure]
 		public Slice Memoize()
 		{
 			if (this.Count == 0) return this.Array == null ? Slice.Nil : Slice.Empty;
@@ -1243,7 +1559,7 @@ namespace FoundationDB.Client
 		private int UnsafeMapToOffset(int index)
 		{
 			int p = NormalizeIndex(index);
-			Contract.Requires(p >= 0 & p < this.Count);
+			Contract.Requires(p >= 0 & p < this.Count, "Index is outside the slice buffer");
 			return this.Offset + p;
 		}
 
@@ -1275,7 +1591,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Returns a substring of the current slice that fits withing the specified index range</summary>
 		/// <param name="start">The starting position of the substring. Positive values means from the start, negative values means from the end</param>
-		/// <param name="end">The end position (exlucded) of the substring. Positive values means from the start, negative values means from the end</param>
+		/// <param name="end">The end position (excluded) of the substring. Positive values means from the start, negative values means from the end</param>
 		/// <returns>Subslice</returns>
 		public Slice this[int start, int end]
 		{
@@ -1295,6 +1611,7 @@ namespace FoundationDB.Client
 			}
 		}
 
+		[ContractAnnotation("=> halt")]
 		private static void FailIndexOutOfBound(int index)
 		{
 			throw new IndexOutOfRangeException("Index is outside the slice");
@@ -1338,7 +1655,7 @@ namespace FoundationDB.Client
 		/// Slice.Nil.Substring(0) => Slice.Emtpy
 		/// </example>
 		/// <exception cref="System.ArgumentOutOfRangeException"><paramref name="offset"/> indicates a position not within this instance, or <paramref name="offset"/> is less than zero</exception>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure]
 		public Slice Substring(int offset)
 		{
 			if (offset == 0) return this;
@@ -1364,7 +1681,7 @@ namespace FoundationDB.Client
 		/// Slice.Nil.Substring(0, 0) => Slice.Emtpy
 		/// </example>
 		/// <exception cref="System.ArgumentOutOfRangeException"><paramref name="offset"/> plus <paramref name="count"/> indicates a position not within this instance, or <paramref name="offset"/> or <paramref name="count"/> is less than zero</exception>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure]
 		public Slice Substring(int offset, int count)
 		{
 			if (count == 0) return Slice.Empty;
@@ -1383,7 +1700,7 @@ namespace FoundationDB.Client
 		/// <param name="separator">The slice that delimits the sub-slices in this instance.</param>
 		/// <param name="options"><see cref="StringSplitOptions.RemoveEmptyEntries"/> to omit empty array elements from the array returned; or <see cref="StringSplitOptions.None"/> to include empty array elements in the array returned.</param>
 		/// <returns>An array whose elements contains the sub-slices in this instance that are delimited by the value of <paramref name="separator"/>.</returns>
-		[System.Diagnostics.Contracts.Pure]
+		[Pure]
 		public Slice[] Split(Slice separator, StringSplitOptions options = StringSplitOptions.None)
 		{
 			return Split(this, separator, options);
@@ -1392,6 +1709,7 @@ namespace FoundationDB.Client
 		/// <summary>Reports the zero-based index of the first occurence of the specified slice in this instance.</summary>
 		/// <param name="value">The slice to seek</param>
 		/// <returns>The zero-based index of <paramref name="value"/> if that slice is found, or -1 if it is not. If <paramref name="value"/> is <see cref="Slice.Empty"/>, then the return value is -1.</returns>
+		[Pure]
 		public int IndexOf(Slice value)
 		{
 			return Find(this, value);
@@ -1401,6 +1719,7 @@ namespace FoundationDB.Client
 		/// <param name="value">The slice to seek</param>
 		/// <param name="startIndex">The search starting position</param>
 		/// <returns>The zero-based index of <paramref name="value"/> if that slice is found, or -1 if it is not. If <paramref name="value"/> is <see cref="Slice.Empty"/>, then the return value is startIndex</returns>
+		[Pure]
 		public int IndexOf(Slice value, int startIndex)
 		{
 			//REVIEW: support negative indexing ?
@@ -1416,6 +1735,7 @@ namespace FoundationDB.Client
 		/// <summary>Determines whether the beginning of this slice instance matches a specified slice.</summary>
 		/// <param name="value">The slice to compare</param>
 		/// <returns><b>true</b> if <paramref name="value"/> matches the beginning of this slice; otherwise, <b>false</b></returns>
+		[Pure]
 		public bool StartsWith(Slice value)
 		{
 			if (!value.HasValue) throw new ArgumentNullException("value");
@@ -1432,6 +1752,7 @@ namespace FoundationDB.Client
 		/// <summary>Determines whether the end of this slice instance matches a specified slice.</summary>
 		/// <param name="value">The slice to compare to the substring at the end of this instance.</param>
 		/// <returns><b>true</b> if <paramref name="value"/> matches the end of this slice; otherwise, <b>false</b></returns>
+		[Pure]
 		public bool EndsWith(Slice value)
 		{
 			if (!value.HasValue) throw new ArgumentNullException("value");
@@ -1446,6 +1767,7 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>Equivalent of StartsWith, but the returns false if both slices are identical</summary>
+		[Pure]
 		public bool PrefixedBy(Slice parent)
 		{
 			// empty is a parent of everyone
@@ -1475,10 +1797,11 @@ namespace FoundationDB.Client
 
 		/// <summary>Append/Merge a slice at the end of the current slice</summary>
 		/// <param name="tail">Slice that must be appended</param>
-		/// <returns>Merged slice if both slices are contigous, or a new slice containg the content of the current slice, followed by the tail slice</returns>
+		/// <returns>Merged slice if both slices are contigous, or a new slice containg the content of the current slice, followed by the tail slice. Or Slice.Empty if both parts are nil or empty</returns>
+		[Pure]
 		public Slice Concat(Slice tail)
 		{
-			if (tail.Count == 0) return this;
+			if (tail.Count == 0) return this.Count > 0 ? this: Slice.Empty;
 			if (this.Count == 0) return tail;
 
 			SliceHelpers.EnsureSliceIsValid(ref tail);
@@ -1499,7 +1822,8 @@ namespace FoundationDB.Client
 		/// <summary>Append an array of slice at the end of the current slice, all sharing the same buffer</summary>
 		/// <param name="slices">Slices that must be appended</param>
 		/// <returns>Array of slices (for all keys) that share the same underlying buffer</returns>
-		public Slice[] ConcatRange(Slice[] slices)
+		[Pure][NotNull]
+		public Slice[] ConcatRange([NotNull] Slice[] slices)
 		{
 			if (slices == null) throw new ArgumentNullException("slices");
 			SliceHelpers.EnsureSliceIsValid(ref this);
@@ -1525,16 +1849,17 @@ namespace FoundationDB.Client
 		/// <summary>Append a sequence of slice at the end of the current slice, all sharing the same buffer</summary>
 		/// <param name="slices">Slices that must be appended</param>
 		/// <returns>Array of slices (for all keys) that share the same underlying buffer</returns>
-		public Slice[] ConcatRange(IEnumerable<Slice> slices)
+		[Pure][NotNull]
+		public Slice[] ConcatRange([NotNull] IEnumerable<Slice> slices)
 		{
 			if (slices == null) throw new ArgumentNullException("slices");
-
-			var next = new List<int>();
-			var writer = SliceWriter.Empty;
 
 			// use optimized version for arrays
 			var array = slices as Slice[];
 			if (array != null) return ConcatRange(array);
+
+			var next = new List<int>();
+			var writer = SliceWriter.Empty;
 
 			//TODO: use multiple buffers if item count is huge ?
 
@@ -1571,7 +1896,7 @@ namespace FoundationDB.Client
 		public static Slice Concat(params Slice[] args)
 		{
 			int count = 0;
-			for (int i = 0; i < args.Length; i++) count += args.Length;
+			for (int i = 0; i < args.Length; i++) count += args[i].Count;
 			if (count == 0) return Slice.Empty;
 			var writer = new SliceWriter(count);
 			for (int i = 0; i < args.Length; i++) writer.WriteBytes(args[i]);
@@ -1727,6 +2052,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Returns a printable representation of a key</summary>
 		/// <remarks>This may not be efficient, so it should only be use for testing/logging/troubleshooting</remarks>
+		[NotNull]
 		public static string Dump(Slice value)
 		{
 			const int MAX_SIZE = 1024;
@@ -1784,8 +2110,10 @@ namespace FoundationDB.Client
 
 		/// <summary>Read the content of a stream into a slice</summary>
 		/// <param name="data">Source stream, that must be in a readable state</param>
-		/// <returns>Slice containing the stream content (or Slice.Nil if the stream is Stream.Nul)</returns>
-		public static Slice FromStream(Stream data)
+		/// <returns>Slice containing the stream content (or <see cref="Slice.Nil"/> if the stream is <see cref="Stream.Null"/>)</returns>
+		/// <exception cref="ArgumentNullException">If <paramref name="data"/> is null.</exception>
+		/// <exception cref="InvalidOperationException">If the size of the <paramref name="data"/> stream exceeds <see cref="int.MaxValue"/> or if it does not support reading.</exception>
+		public static Slice FromStream([NotNull] Stream data)
 		{
 			if (data == null) throw new ArgumentNullException("data");
 
@@ -1812,15 +2140,18 @@ namespace FoundationDB.Client
 		/// <summary>Asynchronously read the content of a stream into a slice</summary>
 		/// <param name="data">Source stream, that must be in a readable state</param>
 		/// <param name="cancellationToken">Optional cancellation token for this operation</param>
-		/// <returns>Slice containing the stream content (or Slice.Nil if the stream is Stream.Nul)</returns>
-		public static Task<Slice> FromStreamAsync(Stream data, CancellationToken cancellationToken)
+		/// <returns>Slice containing the stream content (or <see cref="Slice.Nil"/> if the stream is <see cref="Stream.Null"/>)</returns>
+		/// <exception cref="ArgumentNullException">If <paramref name="data"/> is null.</exception>
+		/// <exception cref="InvalidOperationException">If the size of the <paramref name="data"/> stream exceeds <see cref="int.MaxValue"/> or if it does not support reading.</exception>
+		public static Task<Slice> FromStreamAsync([NotNull] Stream data, CancellationToken cancellationToken)
 		{
 			if (data == null) throw new ArgumentNullException("data");
+
 			// special case for empty values
 			if (data == Stream.Null) return Task.FromResult(Slice.Nil);
-			if (data.Length == 0) return Task.FromResult(Slice.Empty);
+			if (!data.CanRead) throw new InvalidOperationException("Cannot read from provided stream");
 
-			if (!data.CanRead) throw new ArgumentException("Cannot read from provided stream", "data");
+			if (data.Length == 0) return Task.FromResult(Slice.Empty);
 			if (data.Length > int.MaxValue) throw new InvalidOperationException("Streams of more than 2GB are not supported");
 			//TODO: other checks?
 
@@ -1842,7 +2173,7 @@ namespace FoundationDB.Client
 		/// <param name="source">Source stream</param>
 		/// <param name="length">Number of bytes to read from the stream</param>
 		/// <returns>Slice containing the loaded data</returns>
-		private static Slice LoadFromNonBlockingStream(Stream source, int length)
+		private static Slice LoadFromNonBlockingStream([NotNull] Stream source, int length)
 		{
 			Contract.Requires(source != null && source.CanRead && source.Length <= int.MaxValue);
 
@@ -1878,7 +2209,7 @@ namespace FoundationDB.Client
 		/// <param name="length">Number of bytes to read from the stream</param>
 		/// <param name="chunkSize">If non zero, max amount of bytes to read in one chunk. If zero, tries to read everything at once</param>
 		/// <returns>Slice containing the loaded data</returns>
-		private static Slice LoadFromBlockingStream(Stream source, int length, int chunkSize = 0)
+		private static Slice LoadFromBlockingStream([NotNull] Stream source, int length, int chunkSize = 0)
 		{
 			Contract.Requires(source != null && source.CanRead && source.Length <= int.MaxValue && chunkSize >= 0);
 
@@ -1908,7 +2239,7 @@ namespace FoundationDB.Client
 		/// <param name="chunkSize">If non zero, max amount of bytes to read in one chunk. If zero, tries to read everything at once</param>
 		/// <param name="cancellationToken">Optional cancellation token for this operation</param>
 		/// <returns>Slice containing the loaded data</returns>
-		private static async Task<Slice> LoadFromBlockingStreamAsync(Stream source, int length, int chunkSize, CancellationToken cancellationToken)
+		private static async Task<Slice> LoadFromBlockingStreamAsync([NotNull] Stream source, int length, int chunkSize, CancellationToken cancellationToken)
 		{
 			Contract.Requires(source != null && source.CanRead && source.Length <= int.MaxValue && chunkSize >= 0);
 

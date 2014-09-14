@@ -28,7 +28,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace FoundationDB.Client.Converters
 {
+	using FoundationDB.Client.Utils;
 	using FoundationDB.Layers.Tuples;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Generic;
 	using System.Globalization;
@@ -82,7 +84,7 @@ namespace FoundationDB.Client.Converters
 		{
 			private Func<T, R> Converter { get; set; }
 
-			public Anonymous(Func<T, R> converter)
+			public Anonymous([NotNull] Func<T, R> converter)
 			{
 				if (converter == null) throw new ArgumentNullException("converter");
 				this.Converter = converter;
@@ -179,7 +181,8 @@ namespace FoundationDB.Client.Converters
 			RegisterUnsafe<long, TimeSpan>((value) => TimeSpan.FromTicks(value));
 			RegisterUnsafe<long, double>((value) => { checked { return (double)value; } });
 			RegisterUnsafe<long, float>((value) => { checked { return (float)value; } });
-			RegisterUnsafe<long, System.Net.IPAddress>((value) => { return new System.Net.IPAddress(value); });
+			RegisterUnsafe<long, Uuid64>((value) => new Uuid64(value));
+			RegisterUnsafe<long, System.Net.IPAddress>((value) => new System.Net.IPAddress(value));
 
 			RegisterUnsafe<ulong, Slice>((value) => Slice.FromUInt64(value));
 			RegisterUnsafe<ulong, byte[]>((value) => Slice.FromUInt64(value).GetBytes());
@@ -190,6 +193,7 @@ namespace FoundationDB.Client.Converters
 			RegisterUnsafe<ulong, bool>((value) => value != 0);
 			RegisterUnsafe<ulong, double>((value) => { checked { return (double)value; } });
 			RegisterUnsafe<ulong, float>((value) => { checked { return (float)value; } });
+			RegisterUnsafe<ulong, Uuid64>((value) => new Uuid64(value));
 
 			RegisterUnsafe<string, Slice>((value) => Slice.FromString(value));
 			RegisterUnsafe<string, byte[]>((value) => Slice.FromString(value).GetBytes());
@@ -198,7 +202,8 @@ namespace FoundationDB.Client.Converters
 			RegisterUnsafe<string, long>((value) => string.IsNullOrEmpty(value) ? default(long) : Int64.Parse(value, CultureInfo.InvariantCulture));
 			RegisterUnsafe<string, ulong>((value) => string.IsNullOrEmpty(value) ? default(ulong) : UInt64.Parse(value, CultureInfo.InvariantCulture));
 			RegisterUnsafe<string, Guid>((value) => string.IsNullOrEmpty(value) ? default(Guid) : Guid.Parse(value));
-			RegisterUnsafe<string, Uuid>((value) => string.IsNullOrEmpty(value) ? default(Uuid) : Uuid.Parse(value));
+			RegisterUnsafe<string, Uuid128>((value) => string.IsNullOrEmpty(value) ? default(Uuid128) : Uuid128.Parse(value));
+			RegisterUnsafe<string, Uuid64>((value) => string.IsNullOrEmpty(value) ? default(Uuid64) : Uuid64.Parse(value));
 			RegisterUnsafe<string, bool>((value) => !string.IsNullOrEmpty(value));
 			RegisterUnsafe<string, float>((value) => string.IsNullOrEmpty(value) ? default(float) : Single.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture));
 			RegisterUnsafe<string, double>((value) => string.IsNullOrEmpty(value) ? default(double) : Double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture));
@@ -211,24 +216,32 @@ namespace FoundationDB.Client.Converters
 			RegisterUnsafe<byte[], uint>((value) => value == null ? 0U : Slice.Create(value).ToUInt32());
 			RegisterUnsafe<byte[], long>((value) => value == null ? 0L : Slice.Create(value).ToInt64());
 			RegisterUnsafe<byte[], ulong>((value) => value == null ? 0UL : Slice.Create(value).ToUInt64());
-			RegisterUnsafe<byte[], Guid>((value) => value == null || value.Length == 0 ? default(Guid) : new Uuid(value).ToGuid());
-			RegisterUnsafe<byte[], Uuid>((value) => value == null || value.Length == 0 ? default(Uuid) : new Uuid(value));
+			RegisterUnsafe<byte[], Guid>((value) => value == null || value.Length == 0 ? default(Guid) : new Uuid128(value).ToGuid());
+			RegisterUnsafe<byte[], Uuid128>((value) => value == null || value.Length == 0 ? default(Uuid128) : new Uuid128(value));
+			RegisterUnsafe<byte[], Uuid64>((value) => value == null || value.Length == 0 ? default(Uuid64) : new Uuid64(value));
 			RegisterUnsafe<byte[], TimeSpan>((value) => value == null ? TimeSpan.Zero : TimeSpan.FromTicks(Slice.Create(value).ToInt64()));
 			RegisterUnsafe<byte[], System.Net.IPAddress>((value) => value == null || value.Length == 0 ? default(System.Net.IPAddress) : new System.Net.IPAddress(value));
 
 			RegisterUnsafe<Guid, Slice>((value) => Slice.FromGuid(value));
 			RegisterUnsafe<Guid, byte[]>((value) => Slice.FromGuid(value).GetBytes());
 			RegisterUnsafe<Guid, string>((value) => value.ToString("D", null));
-			RegisterUnsafe<Guid, Uuid>((value) => new Uuid(value));
-			RegisterUnsafe<Guid, bool>((value) => value == Guid.Empty);
-			RegisterUnsafe<Guid, System.Net.IPAddress>((value) => new System.Net.IPAddress(new Uuid(value).ToByteArray()));
+			RegisterUnsafe<Guid, Uuid128>((value) => new Uuid128(value));
+			RegisterUnsafe<Guid, bool>((value) => value != Guid.Empty);
+			RegisterUnsafe<Guid, System.Net.IPAddress>((value) => new System.Net.IPAddress(new Uuid128(value).ToByteArray()));
 
-			RegisterUnsafe<Uuid, Slice>((value) => value.ToSlice());
-			RegisterUnsafe<Uuid, byte[]>((value) => value.ToByteArray());
-			RegisterUnsafe<Uuid, string>((value) => value.ToString("D", null));
-			RegisterUnsafe<Uuid, Guid>((value) => value.ToGuid());
-			RegisterUnsafe<Uuid, bool>((value) => value == Uuid.Empty);
+			RegisterUnsafe<Uuid128, Slice>((value) => value.ToSlice());
+			RegisterUnsafe<Uuid128, byte[]>((value) => value.ToByteArray());
+			RegisterUnsafe<Uuid128, string>((value) => value.ToString("D", null));
+			RegisterUnsafe<Uuid128, Guid>((value) => value.ToGuid());
+			RegisterUnsafe<Uuid128, bool>((value) => value != Uuid128.Empty);
 			RegisterUnsafe<Guid, System.Net.IPAddress>((value) => new System.Net.IPAddress(value.ToByteArray()));
+
+			RegisterUnsafe<Uuid64, Slice>((value) => value.ToSlice());
+			RegisterUnsafe<Uuid64, byte[]>((value) => value.ToByteArray());
+			RegisterUnsafe<Uuid64, string>((value) => value.ToString("D", null));
+			RegisterUnsafe<Uuid64, long>((value) => value.ToInt64());
+			RegisterUnsafe<Uuid64, ulong>((value) => value.ToUInt64());
+			RegisterUnsafe<Uuid64, bool>((value) => value.ToInt64() != 0L);
 
 			RegisterUnsafe<TimeSpan, Slice>((value) => Slice.FromInt64(value.Ticks));
 			RegisterUnsafe<TimeSpan, byte[]>((value) => Slice.FromInt64(value.Ticks).GetBytes());
@@ -252,7 +265,8 @@ namespace FoundationDB.Client.Converters
 			RegisterUnsafe<Slice, long>((value) => value.ToInt64());
 			RegisterUnsafe<Slice, ulong>((value) => value.ToUInt64());
 			RegisterUnsafe<Slice, Guid>((value) => value.ToGuid());
-			RegisterUnsafe<Slice, Uuid>((value) => value.ToUuid());
+			RegisterUnsafe<Slice, Uuid128>((value) => value.ToUuid128());
+			RegisterUnsafe<Slice, Uuid64>((value) => value.ToUuid64());
 			RegisterUnsafe<Slice, TimeSpan>((value) => TimeSpan.FromTicks(value.ToInt64()));
 			RegisterUnsafe<Slice, FdbTupleAlias>((value) => (FdbTupleAlias)value.ToByte());
 			RegisterUnsafe<Slice, System.Net.IPAddress>((value) => !value.IsNullOrEmpty ? new System.Net.IPAddress(value.GetBytes()) : null);
@@ -261,6 +275,7 @@ namespace FoundationDB.Client.Converters
 		/// <summary>Helper method to throw an exception when we don't know how to convert from <paramref name="source"/> to <paramref name="destination"/></summary>
 		/// <param name="source"></param>
 		/// <param name="destination"></param>
+		[ContractAnnotation("=> halt")]
 		private static void FailCannotConvert(Type source, Type destination)
 		{
 			// prettyprint nullable type names to have something more usefull than "Nullable`1"
@@ -289,7 +304,7 @@ namespace FoundationDB.Client.Converters
 		/// <typeparam name="R">Destination type</typeparam>
 		/// <param name="converter">Lambda that converts a value of type <typeparamref name="T"/> into a value of type <typeparamref name="R"/></param>
 		/// <returns>Converters that wraps the lambda</returns>
-		public static IFdbConverter<T, R> Create<T, R>(Func<T, R> converter)
+		public static IFdbConverter<T, R> Create<T, R>([NotNull] Func<T, R> converter)
 		{
 			if (converter == null) throw new ArgumentNullException("converter");
 			return new Anonymous<T, R>(converter);
@@ -299,8 +314,9 @@ namespace FoundationDB.Client.Converters
 		/// <typeparam name="T">Source type</typeparam>
 		/// <typeparam name="R">Destination type</typeparam>
 		/// <param name="converter">Lambda that converts a value of type <typeparamref name="T"/> into a value of type <typeparamref name="R"/></param>
-		internal static void RegisterUnsafe<T, R>(Func<T, R> converter)
+		internal static void RegisterUnsafe<T, R>([NotNull] Func<T, R> converter)
 		{
+			Contract.Requires(converter != null);
 			Converters[new ComparisonHelper.TypePair(typeof(T), typeof(R))] = new Anonymous<T, R>(converter);
 		}
 
@@ -308,8 +324,9 @@ namespace FoundationDB.Client.Converters
 		/// <typeparam name="T">Source type</typeparam>
 		/// <typeparam name="R">Destination type</typeparam>
 		/// <param name="converter">Lambda that converts a value of type <typeparamref name="T"/> into a value of type <typeparamref name="R"/></param>
-		public static void Register<T, R>(Func<T, R> converter)
+		public static void Register<T, R>([NotNull] Func<T, R> converter)
 		{
+			Contract.Requires(converter != null);
 			Register<T, R>(new Anonymous<T, R>(converter));
 		}
 
@@ -317,8 +334,9 @@ namespace FoundationDB.Client.Converters
 		/// <typeparam name="T">Source type</typeparam>
 		/// <typeparam name="R">Destination type</typeparam>
 		/// <param name="converter">Instance that can convert values of type <typeparamref name="T"/> into a values of type <typeparamref name="R"/></param>
-		public static void Register<T, R>(IFdbConverter<T, R> converter)
+		public static void Register<T, R>([NotNull] IFdbConverter<T, R> converter)
 		{
+			if (converter == null) throw new ArgumentNullException("converter");
 			while (true)
 			{
 				var previous = Converters;
@@ -336,6 +354,7 @@ namespace FoundationDB.Client.Converters
 		/// <typeparam name="R">Destination type</typeparam>
 		/// <returns>Valid convertir for this types, or an exception if there are no known convertions</returns>
 		/// <exception cref="System.InvalidOperationException">No valid converter for these types was found</exception>
+		[NotNull]
 		public static IFdbConverter<T, R> GetConverter<T, R>()
 		{
 			if (typeof(T) == typeof(R))
@@ -413,7 +432,7 @@ namespace FoundationDB.Client.Converters
 
 		/// <summary>Converts all the elements of a sequence</summary>
 		/// <returns>New sequence with all the converted elements</returns>
-		public static IEnumerable<R> ConvertAll<T, R>(this IFdbConverter<T, R> converter, IEnumerable<T> items)
+		public static IEnumerable<R> ConvertAll<T, R>(this IFdbConverter<T, R> converter, [NotNull] IEnumerable<T> items)
 		{
 			if (converter == null) throw new ArgumentNullException("converter");
 			if (items == null) throw new ArgumentNullException("items");
@@ -426,17 +445,19 @@ namespace FoundationDB.Client.Converters
 
 		/// <summary>Converts all the elements of a list</summary>
 		/// <returns>New list with all the converted elements</returns>
-		public static List<R> ConvertAll<T, R>(this IFdbConverter<T, R> converter, List<T> items)
+		[NotNull]
+		public static List<R> ConvertAll<T, R>(this IFdbConverter<T, R> converter, [NotNull] List<T> items)
 		{
 			if (converter == null) throw new ArgumentNullException("converter");
 			if (items == null) throw new ArgumentNullException("items");
 
-			return items.ConvertAll<R>(new Converter<T, R>(converter.Convert));
+			return items.ConvertAll<R>(converter.Convert);
 		}
 
 		/// <summary>Converts all the elements of an array</summary>
 		/// <returns>New array with all the converted elements</returns>
-		public static R[] ConvertAll<T, R>(this IFdbConverter<T, R> converter, T[] items)
+		[NotNull]
+		public static R[] ConvertAll<T, R>(this IFdbConverter<T, R> converter, [NotNull] T[] items)
 		{
 			if (converter == null) throw new ArgumentNullException("converter");
 			if (items == null) throw new ArgumentNullException("items");

@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,6 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace FoundationDB.Linq
 {
+	using FoundationDB.Client.Utils;
+	using JetBrains.Annotations;
 	using System;
 	using System.Threading;
 	using System.Threading.Tasks;
@@ -37,10 +39,13 @@ namespace FoundationDB.Linq
 	internal sealed class FdbTakeWhileAsyncIterator<TSource> : FdbAsyncFilter<TSource, TSource>
 	{
 		private readonly Func<TSource, bool> m_condition;
+		//TODO: also accept a Func<TSource, CT, Task<bool>> ?
 
-		public FdbTakeWhileAsyncIterator(IFdbAsyncEnumerable<TSource> source, Func<TSource, bool> condition)
+		public FdbTakeWhileAsyncIterator([NotNull] IFdbAsyncEnumerable<TSource> source, [NotNull] Func<TSource, bool> condition)
 			: base(source)
 		{
+			Contract.Requires(condition != null);
+
 			m_condition = condition;
 		}
 

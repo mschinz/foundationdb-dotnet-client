@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,27 +28,30 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #undef DEBUG_HANDLES
 
-using Microsoft.Win32.SafeHandles;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.ConstrainedExecution;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace FoundationDB.Client.Native
 {
+	using System;
+	using System.Runtime.ConstrainedExecution;
+	using System.Runtime.InteropServices;
+
+	//Note: Mono seems to only support auto-marshalling of SafeHandle and not CriticalHandle, and requires a LayoutKind.Sequential to work correctly
+	// see http://www.mono-project.com/Interop_with_Native_Libraries#.NET_2.0_and_SafeHandles
+	// For Windows, we can use a CriticalHandle which will give us a bit more performance (no reference counting)
 
 	/// <summary>Base class for all wrappers on FDBxxxx* opaque pointers</summary>
+#if MONO
+	[StructLayout(LayoutKind.Sequential)]
+	internal abstract class FdbSafeHandle : SafeHandle
+#else
 	internal abstract class FdbSafeHandle : CriticalHandle
+#endif
 	{
 		protected FdbSafeHandle()
+#if MONO
+			: base(IntPtr.Zero, true)
+#else
 			: base(IntPtr.Zero)
+#endif
 		{ }
 
 		public override bool IsInvalid

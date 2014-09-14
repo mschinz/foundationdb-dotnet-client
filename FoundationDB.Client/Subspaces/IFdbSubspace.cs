@@ -1,5 +1,5 @@
 ﻿#region BSD Licence
-/* Copyright (c) 2013, Doxense SARL
+/* Copyright (c) 2013-2014, Doxense SAS
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -28,11 +28,27 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace FoundationDB.Client
 {
+	using JetBrains.Annotations;
 	using System;
 
 	public interface IFdbSubspace : IFdbKey
 	{
 		// This interface helps solve some type resolution ambiguities at compile time between types that all implement IFdbKey but have different semantics for partitionning and concatenation
+
+		/// <summary>Create a new subspace by adding a suffix to the key of the current subspace.</summary>
+		/// <param name="suffix">Binary suffix that will be appended to the current prefix</param>
+		/// <returns>New subspace whose prefix is the concatenation of the parent prefix, and <paramref name="suffix"/></returns>
+		IFdbSubspace this[Slice suffix] { [NotNull] get; }
+
+		IFdbSubspace this[IFdbKey key] { [NotNull] get; }
+
+		/// <summary>Test if a key is inside the range of keys logically contained by this subspace</summary>
+		/// <param name="key">Key to test</param>
+		/// <returns>True if the key can exist inside the current subspace.</returns>
+		/// <remarks>Please note that this method does not test if the key *actually* exists in the database, only if the key is not ouside the range of keys defined by the subspace.</remarks>
+		bool Contains(Slice key);
+
+		//REVIEW: Consider adding IEquatable<IFdbSubspace> and maybe IComparable<IFdbSubspace> ?
 	}
 
 }

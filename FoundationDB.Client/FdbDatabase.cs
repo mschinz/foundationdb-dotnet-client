@@ -33,7 +33,7 @@ namespace FoundationDB.Client
 	using FoundationDB.Client.Native;
 	using FoundationDB.Client.Utils;
 	using FoundationDB.Layers.Directories;
-	using FoundationDB.Layers.Tuples;
+	using JetBrains.Annotations;
 	using System;
 	using System.Collections.Concurrent;
 	using System.Diagnostics;
@@ -112,6 +112,14 @@ namespace FoundationDB.Client
 			ChangeRoot(contentSubspace, directory, readOnly);
 		}
 
+		/// <summary>Create a new Database instance from a database handler</summary>
+		/// <param name="cluster">Parent cluster</param>
+		/// <param name="handler">Handle to the native FDB_DATABASE*</param>
+		/// <param name="name">Name of the database</param>
+		/// <param name="contentSubspace">Subspace of the all keys accessible by this database instance</param>
+		/// <param name="directory">Root directory of the database instance</param>
+		/// <param name="readOnly">If true, the database instance will only allow read-only transactions</param>
+		/// <param name="ownsCluster">If true, the cluster instance lifetime is linked with the database instance</param>
 		public static FdbDatabase Create(IFdbCluster cluster, IFdbDatabaseHandler handler, string name, FdbSubspace contentSubspace, IFdbDirectory directory, bool readOnly, bool ownsCluster)
 		{
 			if (cluster == null) throw new ArgumentNullException("cluster");
@@ -126,10 +134,18 @@ namespace FoundationDB.Client
 		#region Public Properties...
 
 		/// <summary>Cluster where the database is located</summary>
-		public IFdbCluster Cluster { get { return m_cluster; } }
+		public IFdbCluster Cluster
+		{
+			[NotNull]
+			get { return m_cluster; }
+		}
 
 		/// <summary>Name of the database</summary>
-		public string Name { get { return m_name; } }
+		public string Name
+		{
+			[NotNull]
+			get { return m_name; }
+		}
 
 		/// <summary>Returns a cancellation token that is linked with the lifetime of this database instance</summary>
 		/// <remarks>The token will be cancelled if the database instance is disposed</remarks>
@@ -142,6 +158,7 @@ namespace FoundationDB.Client
 		/// <summary>Root directory of this database instance</summary>
 		public FdbDatabasePartition Directory
 		{
+			[NotNull]
 			get
 			{
 				if (m_directory == null)
@@ -151,6 +168,7 @@ namespace FoundationDB.Client
 						if (m_directory == null)
 						{
 							m_directory = GetRootDirectory();
+							Contract.Assert(m_directory != null);
 						}
 					}
 				}
@@ -184,6 +202,7 @@ namespace FoundationDB.Client
 		/// }</example>
 		public IFdbTransaction BeginTransaction(FdbTransactionMode mode, CancellationToken cancellationToken, FdbOperationContext context = null)
 		{
+			cancellationToken.ThrowIfCancellationRequested();
 			if (context == null) context = new FdbOperationContext(this, mode, cancellationToken);
 			return CreateNewTransaction(context);
 		}
@@ -232,6 +251,7 @@ namespace FoundationDB.Client
 
 		internal void EnsureTransactionIsValid(FdbTransaction transaction)
 		{
+			Contract.Requires(transaction != null);
 			if (m_disposed) ThrowIfDisposed();
 			//TODO?
 		}
@@ -283,13 +303,13 @@ namespace FoundationDB.Client
 		/// <summary>Runs a transactional lambda function against this database, inside a read-only transaction context, with retry logic.</summary>
 		/// <param name="asyncHandler">Asynchronous lambda function that is passed a new read-only transaction on each retry.</param>
 		/// <param name="cancellationToken">Optional cancellation token that will be passed to the transaction context, and that can also be used to abort the retry loop.</param>
-		public Task ReadAsync(Func<IFdbReadOnlyTransaction, Task> asyncHandler, CancellationToken cancellationToken)
+		public Task ReadAsync([InstantHandle] Func<IFdbReadOnlyTransaction, Task> asyncHandler, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunReadAsync(this, asyncHandler, null, cancellationToken);
 		}
 
-		//EXPERIMENTAL
-		public Task ReadAsync(Func<IFdbReadOnlyTransaction, Task> asyncHandler, Action<IFdbReadOnlyTransaction> onDone, CancellationToken cancellationToken)
+		/// <summary>EXPERIMENTAL</summary>
+		public Task ReadAsync([InstantHandle] Func<IFdbReadOnlyTransaction, Task> asyncHandler, [InstantHandle] Action<IFdbReadOnlyTransaction> onDone, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunReadAsync(this, asyncHandler, onDone, cancellationToken);
 		}
@@ -302,8 +322,8 @@ namespace FoundationDB.Client
 			return FdbOperationContext.RunReadWithResultAsync<R>(this, asyncHandler, null, cancellationToken);
 		}
 
-		//EXPERIMENTAL
-		public Task<R> ReadAsync<R>(Func<IFdbReadOnlyTransaction, Task<R>> asyncHandler, Action<IFdbReadOnlyTransaction> onDone, CancellationToken cancellationToken)
+		/// <summary>EXPERIMENTAL</summary>
+		public Task<R> ReadAsync<R>([InstantHandle] Func<IFdbReadOnlyTransaction, Task<R>> asyncHandler, [InstantHandle] Action<IFdbReadOnlyTransaction> onDone, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunReadWithResultAsync<R>(this, asyncHandler, onDone, cancellationToken);
 		}
@@ -315,13 +335,13 @@ namespace FoundationDB.Client
 		/// <summary>Runs a transactional lambda function against this database, inside a write-only transaction context, with retry logic.</summary>
 		/// <param name="handler">Lambda function that is passed a new read-write transaction on each retry. It should only call non-async methods, such as Set, Clear or any atomic operation.</param>
 		/// <param name="cancellationToken">Optional cancellation token that will be passed to the transaction context, and that can also be used to abort the retry loop.</param>
-		public Task WriteAsync(Action<IFdbTransaction> handler, CancellationToken cancellationToken)
+		public Task WriteAsync([InstantHandle] Action<IFdbTransaction> handler, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunWriteAsync(this, handler, null, cancellationToken);
 		}
 
-		//EXPERIMENTAL
-		public Task WriteAsync(Action<IFdbTransaction> handler, Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
+		/// <summary>EXPERIMENTAL</summary>
+		public Task WriteAsync([InstantHandle] Action<IFdbTransaction> handler, [InstantHandle] Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunWriteAsync(this, handler, onDone, cancellationToken);
 		}
@@ -329,7 +349,7 @@ namespace FoundationDB.Client
 		/// <summary>Runs a transactional lambda function against this database, inside a write-only transaction context, with retry logic.</summary>
 		/// <param name="asyncHandler">Asynchronous lambda function that is passed a new read-write transaction on each retry.</param>
 		/// <param name="cancellationToken">Optional cancellation token that will be passed to the transaction context, and that can also be used to abort the retry loop.</param>
-		public Task WriteAsync(Func<IFdbTransaction, Task> asyncHandler, CancellationToken cancellationToken)
+		public Task WriteAsync([InstantHandle] Func<IFdbTransaction, Task> asyncHandler, CancellationToken cancellationToken)
 		{
 			//REVIEW: right now, nothing prevents the lambda from calling read methods on the transaction, making this equivalent to calling ReadWriteAsync()
 
@@ -338,8 +358,8 @@ namespace FoundationDB.Client
 			return FdbOperationContext.RunWriteAsync(this, asyncHandler, null, cancellationToken);
 		}
 
-		//EXPERIMENTAL
-		public Task WriteAsync(Func<IFdbTransaction, Task> asyncHandler, Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
+		/// <summary>EXPERIMENTAL</summary>
+		public Task WriteAsync([InstantHandle] Func<IFdbTransaction, Task> asyncHandler, [InstantHandle] Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
 		{
 			//REVIEW: right now, nothing prevents the lambda from calling read methods on the transaction, making this equivalent to calling ReadWriteAsync()
 			// => this version of WriteAsync is only there to catch mistakes when someones passes in an async lambda, instead of an Action<IFdbTransaction>
@@ -350,13 +370,13 @@ namespace FoundationDB.Client
 		/// <summary>Runs a transactional lambda function against this database, inside a read-write transaction context, with retry logic.</summary>
 		/// <param name="asyncHandler">Asynchronous lambda function that is passed a new read-write transaction on each retry.</param>
 		/// <param name="cancellationToken">Optional cancellation token that will be passed to the transaction context, and that can also be used to abort the retry loop.</param>
-		public Task ReadWriteAsync(Func<IFdbTransaction, Task> asyncHandler, CancellationToken cancellationToken)
+		public Task ReadWriteAsync([InstantHandle] Func<IFdbTransaction, Task> asyncHandler, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunWriteAsync(this, asyncHandler, null, cancellationToken);
 		}
 
-		//EXPERIMENTAL
-		public Task ReadWriteAsync(Func<IFdbTransaction, Task> asyncHandler, Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
+		/// <summary>EXPERIMENTAL</summary>
+		public Task ReadWriteAsync([InstantHandle] Func<IFdbTransaction, Task> asyncHandler, [InstantHandle] Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunWriteAsync(this, asyncHandler, onDone, cancellationToken);
 		}
@@ -364,13 +384,13 @@ namespace FoundationDB.Client
 		/// <summary>Runs a transactional lambda function against this database, inside a read-write transaction context, with retry logic.</summary>
 		/// <param name="asyncHandler">Asynchronous lambda function that is passed a new read-write transaction on each retry. The result of the task will also be the result of the transactional.</param>
 		/// <param name="cancellationToken">Optional cancellation token that will be passed to the transaction context, and that can also be used to abort the retry loop.</param>
-		public Task<R> ReadWriteAsync<R>(Func<IFdbTransaction, Task<R>> asyncHandler, CancellationToken cancellationToken)
+		public Task<R> ReadWriteAsync<R>([InstantHandle] Func<IFdbTransaction, Task<R>> asyncHandler, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunWriteWithResultAsync<R>(this, asyncHandler, null, cancellationToken);
 		}
 
-		//EXPERIMENTAL
-		public Task<R> ReadWriteAsync<R>(Func<IFdbTransaction, Task<R>> asyncHandler, Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
+		/// <summary>EXPERIMENTAL</summary>
+		public Task<R> ReadWriteAsync<R>([InstantHandle] Func<IFdbTransaction, Task<R>> asyncHandler, [InstantHandle] Action<IFdbTransaction> onDone, CancellationToken cancellationToken)
 		{
 			return FdbOperationContext.RunWriteWithResultAsync<R>(this, asyncHandler, onDone, cancellationToken);
 		}
@@ -445,6 +465,7 @@ namespace FoundationDB.Client
 		/// <summary>Returns the global namespace used by this database instance</summary>
 		public FdbSubspace GlobalSpace
 		{
+			[NotNull]
 			get
 			{
 				// return a copy of the subspace, to be sure that nobody can change the real globalspace and read elsewhere.
@@ -452,9 +473,40 @@ namespace FoundationDB.Client
 			}
 		}
 
+		/// <summary>Create a new subspace prefixed by a binary key</summary>
+		/// <param name="suffix">Suffix of the subspace</param>
+		/// <returns>New subspace with prefix equal to the database's global prefix followed by <paramref name="suffix"/></returns>
+		public FdbSubspace this[Slice suffix]
+		{
+			//REVIEW: return IFdbSusbspace?
+			get { return suffix.IsNullOrEmpty ? m_globalSpace : m_globalSpaceCopy[suffix]; }
+		}
+
+		/// <summary>Create a new subspace prefixed by a key</summary>
+		/// <param name="key">Key that will packed</param>
+		/// <returns>New subspace with prefix equal to the database's global prefix followed by the packed representation of <paramref name="key"/></returns>
+		public FdbSubspace this[IFdbKey key]
+		{
+			//REVIEW: return IFdbSusbspace?
+			get { return key == null ? m_globalSpace : m_globalSpaceCopy[key]; }
+		}
+
+		IFdbSubspace IFdbSubspace.this[Slice suffix]
+		{
+			get { return this[suffix]; }
+		}
+
+		IFdbSubspace IFdbSubspace.this[IFdbKey key]
+		{
+			get { return this[key]; }
+		}
+
 		/// <summary>Checks that a key is valid, and is inside the global key space of this database</summary>
+		/// <param name="database"></param>
 		/// <param name="key">Key to verify</param>
 		/// <param name="endExclusive">If true, the key is allowed to be one past the maximum key allowed by the global namespace</param>
+		/// <param name="ignoreError"></param>
+		/// <param name="error"></param>
 		/// <returns>An exception if the key is outside of the allowed key space of this database</returns>
 		internal static bool ValidateKey(IFdbDatabase database, Slice key, bool endExclusive, bool ignoreError, out Exception error)
 		{
@@ -497,6 +549,9 @@ namespace FoundationDB.Client
 			return true;
 		}
 
+		/// <summary>Test if a key is contained by this database instance.</summary>
+		/// <param name="key">Key to test</param>
+		/// <returns>True if the key is not null and contained inside the globale subspace</returns>
 		public bool Contains(Slice key)
 		{
 			return key.HasValue && m_globalSpace.Contains(key);
@@ -505,7 +560,7 @@ namespace FoundationDB.Client
 		/// <summary>Returns true if the key is inside the system key space (starts with '\xFF')</summary>
 		internal static bool IsSystemKey(Slice key)
 		{
-			return key.IsPresent && key.Array[key.Offset] == 0xFF;
+			return key.IsPresent && key[0] == 0xFF;
 		}
 
 		/// <summary>Ensures that a serialized value is valid</summary>
@@ -574,12 +629,14 @@ namespace FoundationDB.Client
 			if (m_disposed) throw new ObjectDisposedException(this.GetType().Name);
 		}
 
+		/// <summary>Close this database instance, aborting any pending transaction that was created by this instance.</summary>
 		public void Dispose()
 		{
 			Dispose(true);
 			GC.SuppressFinalize(this);
 		}
 
+		/// <summary>Close this database instance, aborting any pending transaction that was created by this instance.</summary>
 		protected virtual void Dispose(bool disposing)
 		{
 			if (!m_disposed)
